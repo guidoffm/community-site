@@ -14,7 +14,7 @@ export default async function CommunitiesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1>Communities</h1>
-        {actor && <a href="/communities/new" className="btn">Neue Community gründen</a>}
+        {actor?.isSiteAdmin && <a href="/communities/new" className="btn">Neue Community gründen</a>}
       </div>
       {communities.length === 0 && <p className="text-slate-500">Noch keine Communities vorhanden.</p>}
       <ul className="space-y-3">

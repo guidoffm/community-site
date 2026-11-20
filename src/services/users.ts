@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, inArray, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db, t } from "@/db";
+import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { blockedFor, clearFailures, recordFailure } from "@/lib/auth/rate-limit";
@@ -79,9 +80,10 @@ export async function verifyEmail(token: string) {
       .where(and(eq(t.emailVerifications.tokenHash, hashToken(token)), gt(t.emailVerifications.expiresAt, new Date())))
       .returning();
     if (!v) throw new AppError("NOT_FOUND", "Der Bestätigungslink ist ungültig oder abgelaufen. Bitte registriere dich erneut.");
+    const [current] = await tx.select({ email: t.users.email }).from(t.users).where(eq(t.users.id, v.userId));
     const [user] = await tx
       .update(t.users)
-      .set({ emailVerifiedAt: new Date() })
+      .set({ emailVerifiedAt: new Date(), ...(env.siteAdminEmails().includes(current.email) ? { isSiteAdmin: true } : {}) })
       .where(eq(t.users.id, v.userId))
       .returning();
     if (v.communityIds.length) {
@@ -121,4 +123,16 @@ export async function authenticate(emailRaw: string, password: string, ip: strin
     );
   await clearFailures(keys[1]);
   return user;
+}
+
+/** Beim Start: Rolle Site-Admin an die in SITE_ADMIN_EMAILS genannten (bestätigten) Konten vergeben. */
+export async function grantConfiguredSiteAdmins() {
+  const emails = env.siteAdminEmails();
+  if (!emails.length) return 0;
+  const r = await db()
+    .update(t.users)
+    .set({ isSiteAdmin: true })
+    .where(and(inArray(t.users.email, emails), isNotNull(t.users.emailVerifiedAt), eq(t.users.isSiteAdmin, false)))
+    .returning({ id: t.users.id });
+  return r.length;
 }

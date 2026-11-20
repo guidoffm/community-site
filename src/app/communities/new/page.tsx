@@ -2,11 +2,13 @@ import { ActionForm, Submit } from "@/components/form";
 import { createCommunity } from "@/app/actions/communities";
 import { requireActor } from "@/lib/auth/session";
 import { ROOT_DOMAIN } from "@/lib/domains";
+import { notFound } from "next/navigation";
 
 export const metadata = { title: "Neue Community" };
 
 export default async function NewCommunityPage() {
-  await requireActor();
+  const actor = await requireActor();
+  if (!actor.isSiteAdmin) notFound();
   return (
     <div className="card mx-auto max-w-xl">
       <h1 className="mb-4">Neue Community gründen</h1>

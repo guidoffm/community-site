@@ -72,6 +72,7 @@ const createInput = z.object({
 });
 
 export async function createCommunity(actor: Actor, input: unknown) {
+  if (!actor.isSiteAdmin) throw forbidden("Communities können nur von Site-Admins angelegt werden.");
   const data = createInput.parse(input);
   const slug = data.slug || slugify(data.title);
   if (!SLUG_RE.test(slug) || slug.length < 3 || slug.length > 50)

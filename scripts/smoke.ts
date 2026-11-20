@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
 import { authenticate, deleteUnverifiedUsers, peekVerification, register, verifyEmail } from "../src/services/users";
-import { getCommunity, joinCommunity } from "../src/services/communities";
+import { createCommunity, getCommunity, joinCommunity } from "../src/services/communities";
 import { createEvent, getEvent, setRegistration } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
@@ -17,7 +17,7 @@ const ok = (cond: unknown, msg: string) => {
   console.log(`✓ ${msg}`);
 };
 const suffix = Date.now().toString(36);
-const actor = (u: { id: string; email: string; name: string }): Actor => ({ userId: u.id, email: u.email, name: u.name });
+const actor = (u: { id: string; email: string; name: string }): Actor => ({ userId: u.id, email: u.email, name: u.name, isSiteAdmin: false });
 
 const ossis = await getCommunity("ossis");
 ok(ossis.title === "Ossis", "Beispiel-Community Ossis existiert");
@@ -55,6 +55,10 @@ const registerVerified = async (name: string, email: string, communityIds: strin
   return (await verifyEmail(r.token)).user;
 };
 const a = actor(verified.user);
+await createCommunity(a, { title: "Nicht erlaubt" }).then(() => ok(false, "Nicht-Admin"), (e) => ok(/Site-Admins/.test(e.message), "Nur Site-Admins dürfen Communities anlegen"));
+const adminCommunity = await createCommunity({ ...a, isSiteAdmin: true }, { title: `Smoke ${suffix}`, slug: `smoke-${suffix}` });
+ok(adminCommunity.slug === `smoke-${suffix}`, "Site-Admin legt Community an");
+await db().delete(t.communities).where(eq(t.communities.id, adminCommunity.id));
 const b = actor(await registerVerified("Bernd Test", `bernd-${suffix}@example.org`));
 await joinCommunity(b, ossis.id);
 ok(true, "zwei bestätigte Nutzer, beide Mitglied bei Ossis");

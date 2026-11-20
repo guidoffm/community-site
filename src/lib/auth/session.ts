@@ -12,6 +12,8 @@ export interface Actor {
   userId: string;
   email: string;
   name: string;
+  /** darf Communities anlegen */
+  isSiteAdmin: boolean;
 }
 
 const COOKIE = "c15k_session";
@@ -49,7 +51,7 @@ export async function getActor(): Promise<Actor | null> {
     const user = await db().query.users.findFirst({ where: eq(t.users.id, payload.sub) });
     if (!user?.emailVerifiedAt) return null;
     if (user.passwordChangedAt && (payload.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
-    return { userId: user.id, email: user.email, name: user.name };
+    return { userId: user.id, email: user.email, name: user.name, isSiteAdmin: user.isSiteAdmin };
   } catch {
     return null;
   }

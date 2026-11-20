@@ -3,6 +3,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, withAdvisoryLock } from "@/db";
 import { env } from "@/lib/env";
 import { startOutboxWorker } from "@/services/outbox";
+import { grantConfiguredSiteAdmins } from "@/services/users";
 
 export async function init() {
   await withAdvisoryLock(
@@ -10,6 +11,8 @@ export async function init() {
     async () => {
       await migrate(db(), { migrationsFolder: env.migrationsDir() });
       console.log("[init] Datenbank migriert");
+      const admins = await grantConfiguredSiteAdmins();
+      if (admins) console.log(`[init] Rolle Site-Admin an ${admins} Konto/Konten vergeben`);
     },
     { wait: true },
   );

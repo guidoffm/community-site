@@ -19,4 +19,10 @@ export const env = {
   secureCookies: () => process.env.NODE_ENV === "production" && process.env.INSECURE_COOKIES !== "true",
   /** z. B. ".15k.de" – Session gilt auf allen Community-Subdomains */
   cookieDomain: () => process.env.COOKIE_DOMAIN || undefined,
+  /** Kommagetrennte E-Mail-Adressen, die die Rolle Site-Admin erhalten (z. B. aus der Cluster-ConfigMap) */
+  siteAdminEmails: () =>
+    (process.env.SITE_ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
 };

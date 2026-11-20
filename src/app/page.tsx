@@ -72,7 +72,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
         </div>
         {mine.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Du bist noch in keiner Community. <a href="/communities" className="link">Jetzt eine finden oder gründen</a>.
+            Du bist noch in keiner Community. <a href="/communities" className="link">Jetzt eine finden</a>.
           </p>
         ) : (
           <CommunityGrid communities={mine} />

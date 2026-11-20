@@ -1,7 +1,7 @@
 // Datenbankschema. Änderungen: hier anpassen → `npm run db:generate` → Migration einchecken.
 // Migrationen müssen abwärtskompatibel sein (Rolling Update, siehe CLAUDE.md).
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const timestamps = {
@@ -19,6 +19,8 @@ export const users = pgTable("users", {
   passwordChangedAt: ts("password_changed_at"),
   /** null = Registrierung noch nicht per E-Mail bestätigt (Login gesperrt, Job unverified-cleanup löscht nach 24 h) */
   emailVerifiedAt: ts("email_verified_at"),
+  /** Site-Admin: darf Communities anlegen. Vergabe über SITE_ADMIN_EMAILS (beim Start bzw. bei E-Mail-Bestätigung). */
+  isSiteAdmin: boolean("is_site_admin").notNull().default(false),
   ...timestamps,
 });
 
