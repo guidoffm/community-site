@@ -10,10 +10,13 @@ export function CommunityGrid({
       {communities.map((c) => (
         <li key={c.id}>
           <a href={communityUrl(c.slug)} className="card block h-full hover:border-brand">
-            <h3 className="font-semibold">{c.title}</h3>
+            <h3 className="font-semibold text-brand">{c.title}</h3>
             <p className="text-xs text-slate-400">{communityUrl(c.slug).replace(/^https?:\/\//, "").replace(/\/$/, "")}</p>
             {c.description && <p className="mt-2 line-clamp-3 text-sm text-slate-600">{c.description}</p>}
-            <p className="mt-3 text-xs text-slate-400">{c.memberCount} Mitglied{c.memberCount === 1 ? "" : "er"}</p>
+            <p className="mt-3 flex items-center justify-between text-xs text-slate-400">
+              <span>{c.memberCount} Mitglied{c.memberCount === 1 ? "" : "er"}</span>
+              <span className="font-medium text-brand">Ansehen →</span>
+            </p>
           </a>
         </li>
       ))}
