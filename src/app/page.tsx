@@ -8,7 +8,8 @@ import { CommunityGrid } from "@/components/community-grid";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
+  const { welcome } = await searchParams;
   const actor = await getActor();
   const all = await listCommunities(actor);
 
@@ -38,6 +39,7 @@ export default async function Home() {
 
   return (
     <div className="space-y-8">
+      {welcome && <p className="alert-success">Deine E-Mail-Adresse ist bestätigt – willkommen bei {APP_NAME}!</p>}
       <h1>Hallo {actor.name}!</h1>
       {unread > 0 && (
         <a href="/messages" className="block rounded-lg bg-brand-light p-4 text-brand hover:opacity-90">

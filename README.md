@@ -3,7 +3,7 @@
 Plattform für Personengruppen: Communities anlegen und beitreten, Mitglieder anschreiben, Events organisieren, Fotos teilen.
 
 - **Einstieg:** `https://www.15k.de` – jede Community unter eigener Subdomain, z. B. **https://ossis.15k.de**
-- **Registrierung** mit Beitritt zu einer oder mehreren Communities
+- **Registrierung** mit Beitritt zu einer oder mehreren Communities; Bestätigung per E-Mail-Link innerhalb von 24 h, sonst löscht der Job `unverified-cleanup` das Konto
 - **Nachrichten** innerhalb einer Community an alle oder ausgewählte Mitglieder, mit Antworten; Empfänger werden per E-Mail benachrichtigt (ohne Inhalt – gelesen wird auf der Website)
 - **Events** mit Titel, Beschreibung, Ort und Datum; alle Mitglieder werden per E-Mail informiert (inkl. `.ics`-Anhang), Anmeldung zur Teilnahme, Organisator sieht Teilnehmerliste, Download als `.ics`, Absage mit Benachrichtigung
 - **Event-Fotos:** nach Beginn des Events können Teilnehmer Fotos hochladen; sichtbar nur für Teilnehmer

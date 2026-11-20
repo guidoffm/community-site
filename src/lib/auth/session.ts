@@ -47,7 +47,7 @@ export async function getActor(): Promise<Actor | null> {
     const { payload } = await jwtVerify(token, env.sessionSecret());
     if (!payload.sub) return null;
     const user = await db().query.users.findFirst({ where: eq(t.users.id, payload.sub) });
-    if (!user) return null;
+    if (!user?.emailVerifiedAt) return null;
     if (user.passwordChangedAt && (payload.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
     return { userId: user.id, email: user.email, name: user.name };
   } catch {

@@ -99,3 +99,24 @@ export async function notifyEventCancelled(tx: Tx, e: EventInfo, recipients: Rec
     tx,
   );
 }
+
+export async function notifyEmailVerification(tx: Tx, user: Recipient, token: string) {
+  const url = siteUrl(`/verify?token=${encodeURIComponent(token)}`);
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Bitte bestätige deine Registrierung bei ${APP_NAME}`,
+        text: `Hallo ${user.name},\n\nbitte bestätige deine Registrierung bei ${APP_NAME} innerhalb von 24 Stunden:\n${url}\n\nOhne Bestätigung wird die Registrierung automatisch gelöscht. Falls du dich nicht registriert hast, ignoriere diese E-Mail einfach.\n`,
+        html: layout(
+          "Registrierung bestätigen",
+          `<p>Hallo ${escapeHtml(user.name)},</p>
+           <p>bitte bestätige deine Registrierung bei ${escapeHtml(APP_NAME)} <strong>innerhalb von 24 Stunden</strong>. Ohne Bestätigung wird die Registrierung automatisch gelöscht.</p>
+           <p style="color:#64748b;font-size:14px">Falls du dich nicht registriert hast, ignoriere diese E-Mail einfach.</p>`,
+          { label: "Registrierung bestätigen", url },
+        ),
+      },
+    ],
+    tx,
+  );
+}

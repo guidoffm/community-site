@@ -17,8 +17,26 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   /** Sessions, die vor diesem Zeitpunkt ausgestellt wurden, sind ungültig */
   passwordChangedAt: ts("password_changed_at"),
+  /** null = Registrierung noch nicht per E-Mail bestätigt (Login gesperrt, Job unverified-cleanup löscht nach 24 h) */
+  emailVerifiedAt: ts("email_verified_at"),
   ...timestamps,
 });
+
+/** Bestätigungslinks der Registrierung. Gespeichert wird nur der SHA-256-Hash des Tokens. */
+export const emailVerifications = pgTable(
+  "email_verifications",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** Bei der Registrierung gewählte Communities – Beitritt erst nach Bestätigung */
+    communityIds: jsonb("community_ids").$type<string[]>().notNull().default([]),
+    /** Rücksprungziel nach Bestätigung (z. B. Community-Subdomain) */
+    next: text("next"),
+    expiresAt: ts("expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("email_verifications_user_idx").on(t.userId)],
+);
 
 // ---------------------------------------------------------------- Communities
 export const memberRole = pgEnum("member_role", ["admin", "member"]);

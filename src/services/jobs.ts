@@ -6,6 +6,7 @@ import { db, t, withAdvisoryLock } from "@/db";
 import { AppError } from "@/lib/errors";
 import { purgeRateLimits } from "@/lib/auth/rate-limit";
 import { processStorageDeletions } from "./storage-cleanup";
+import { deleteUnverifiedUsers } from "./users";
 
 interface JobDef {
   title: string;
@@ -26,6 +27,11 @@ export const jobs: Record<string, JobDef> = {
       const runs = await db().delete(t.jobRuns).where(lt(t.jobRuns.startedAt, new Date(Date.now() - 90 * day))).returning({ id: t.jobRuns.id });
       return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, rateLimitHits: await purgeRateLimits() };
     },
+  },
+  "unverified-cleanup": {
+    title: "Unbestätigte Registrierungen löschen (älter als 24 h)",
+    schedule: "stündlich (Minute 10)",
+    run: async () => deleteUnverifiedUsers(),
   },
   "storage-cleanup": {
     title: "Vorgemerkte Bild-Objekte im S3-Speicher löschen",

@@ -10,6 +10,7 @@ Architektur wie `simple-erp` (Next.js standalone, Drizzle/pg, eigene Sessions, S
 - Bilder: UUID wird beim Upload vergeben; Objekte `images/<uuid>/full|thumb` in S3 (MinIO) bzw. lokal (`UPLOAD_DIR`, nur Entwicklung). Löschen immer über `scheduleImageDeletion` (Transaktion) + `deleteScheduled`; der Job `storage-cleanup` holt Fehlschläge nach. Bilder werden nur über `/api/images/<uuid>` mit Rechteprüfung ausgeliefert.
 - Formulare: `ActionForm` (onSubmit + startTransition) statt `<form action>` bei Eingabeformularen; einfache Buttons dürfen `<form action>` nutzen, Rückfragen per `data-confirm`.
 - Schemaänderungen: `src/db/schema.ts` ändern → `npm run db:generate` → Migration einchecken. Nie Migrationen von Hand editieren (Ausnahme: Datenmigrationen per `drizzle-kit generate --custom`). Migrationen müssen **abwärtskompatibel** sein (Rolling Update, Expand/Contract).
+- Registrierung: Konto ist bis zur E-Mail-Bestätigung gesperrt (`users.email_verified_at`), Mitgliedschaften erst nach Bestätigung (`email_verifications.community_ids`). Bestätigung per POST-Button (`/verify`), nicht per GET – Mail-Scanner öffnen Links vorab. Job `unverified-cleanup` löscht nach 24 h.
 - Mehrere Replikas: Start-Migration und Jobs über Advisory-Locks (`withAdvisoryLock`), Rate-Limits in `rate_limit_hits`.
 - Image nur `linux/arm64` mit lokalem Docker (`./docker-build.sh`). Deployment: `~/src/argocd/community-site`.
 - Tests: `npm run smoke` gegen die Dev-DB (`npm run dev:db`).

@@ -3,7 +3,7 @@
 import sharp from "sharp";
 import { eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
-import { register } from "../src/services/users";
+import { authenticate, deleteUnverifiedUsers, peekVerification, register, verifyEmail } from "../src/services/users";
 import { getCommunity, joinCommunity } from "../src/services/communities";
 import { createEvent, getEvent, setRegistration } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
@@ -22,10 +22,42 @@ const actor = (u: { id: string; email: string; name: string }): Actor => ({ user
 const ossis = await getCommunity("ossis");
 ok(ossis.title === "Ossis", "Beispiel-Community Ossis existiert");
 
-const a = actor(await register({ name: "Anna Test", email: `anna-${suffix}@example.org`, password: "geheim123", communityIds: [ossis.id] }, "smoke"));
-const b = actor(await register({ name: "Bernd Test", email: `bernd-${suffix}@example.org`, password: "geheim123" }, "smoke"));
+// --- Registrierung mit E-Mail-Bestätigung
+const annaMail = `anna-${suffix}@example.org`;
+const first = await register({ name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
+ok(!first.user.emailVerifiedAt, "Registrierung legt unbestätigtes Konto an");
+const memberBefore = await db().select().from(t.memberships).where(eq(t.memberships.userId, first.user.id));
+ok(memberBefore.length === 0, "vor Bestätigung keine Community-Mitgliedschaft");
+await authenticate(annaMail, "geheim123", `smoke-${suffix}`).then(() => ok(false, "Login unbestätigt"), (e) => ok(/bestätige/.test(e.message), "Login vor Bestätigung gesperrt"));
+const mails = await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, annaMail));
+ok(mails.some((m) => m.subject.includes("bestätige") && m.text.includes("/verify?token=")), "Bestätigungsmail mit Link in der Outbox");
+const again = await register({ name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
+ok(again.user.id === first.user.id && !(await peekVerification(first.token)), "erneute Registrierung: neuer Link, alter ungültig");
+ok((await peekVerification(again.token))?.email === annaMail, "Bestätigungsseite erkennt gültigen Link");
+const verified = await verifyEmail(again.token);
+ok(verified.user.emailVerifiedAt, "E-Mail bestätigt");
+await verifyEmail(again.token).then(() => ok(false, "Link zweimal"), () => ok(true, "Link nur einmal verwendbar"));
+ok((await db().select().from(t.memberships).where(eq(t.memberships.userId, first.user.id))).length === 1, "nach Bestätigung Mitglied bei Ossis");
+await authenticate(annaMail, "geheim123", `smoke-${suffix}`).then(() => ok(true, "Login nach Bestätigung möglich"));
+await register({ name: "X", email: annaMail, password: "geheim123" }, `smoke2-${suffix}`).then(() => ok(false, "doppelt"), () => ok(true, "bestätigte Adresse nicht erneut registrierbar"));
+
+// Unbestätigt + älter als 24 h → Job löscht
+const old = await register({ name: "Otto Alt", email: `otto-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
+await db().update(t.users).set({ createdAt: new Date(Date.now() - 25 * 3_600_000) }).where(eq(t.users.id, old.user.id));
+const fresh = await register({ name: "Frieda Neu", email: `frieda-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
+const cleaned = await deleteUnverifiedUsers();
+const left = await db().select({ id: t.users.id }).from(t.users).where(sql`${t.users.id} in (${old.user.id}, ${fresh.user.id})`);
+ok(cleaned.usersDeleted >= 1 && left.length === 1 && left[0].id === fresh.user.id, "Job löscht nur unbestätigte Konten älter als 24 h");
+
+/** Registrieren + bestätigen (für die weiteren Tests) */
+const registerVerified = async (name: string, email: string, communityIds: string[] = []) => {
+  const r = await register({ name, email, password: "geheim123", communityIds }, `smoke-v-${suffix}`);
+  return (await verifyEmail(r.token)).user;
+};
+const a = actor(verified.user);
+const b = actor(await registerVerified("Bernd Test", `bernd-${suffix}@example.org`));
 await joinCommunity(b, ossis.id);
-ok(true, "zwei Nutzer registriert, beide Mitglied bei Ossis");
+ok(true, "zwei bestätigte Nutzer, beide Mitglied bei Ossis");
 
 const before = (await db().select({ n: sql<number>`count(*)::int` }).from(t.mailOutbox)).at(0)!.n;
 const msg = await sendMessage(a, "ossis", { subject: "Hallo", body: "Wie geht's?", mode: "selected", recipientIds: [b.userId] });
@@ -36,7 +68,7 @@ ok((await inbox(b)).find((m) => m.id === msg.id)?.readAt, "Nachricht als gelesen
 const reply = await replyToMessage(b, msg.id, { body: "Gut!", replyAll: false });
 ok((await readMessage(a, reply.id)).parent?.id === msg.id, "Antwort mit Bezug zur Ursprungsnachricht");
 await readMessage(a, msg.id).then(() => ok(true, "Absender sieht eigene Nachricht"));
-const c = actor(await register({ name: "Carla Fremd", email: `carla-${suffix}@example.org`, password: "geheim123" }, "smoke"));
+const c = actor(await registerVerified("Carla Fremd", `carla-${suffix}@example.org`));
 await readMessage(c, msg.id).then(() => ok(false, "Fremde dürfen nicht lesen"), () => ok(true, "Fremde können Nachricht nicht lesen"));
 
 const start = new Date(Date.now() + 86_400_000);

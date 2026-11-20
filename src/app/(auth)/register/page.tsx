@@ -47,6 +47,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
             </div>
           </fieldset>
         )}
+        <p className="text-xs text-slate-500">Du bekommst eine E-Mail mit einem Bestätigungslink. Bestätigst du ihn nicht innerhalb von 24 Stunden, wird die Registrierung gelöscht.</p>
         <Submit className="btn w-full">Konto erstellen</Submit>
       </ActionForm>
       <p className="mt-4 text-sm text-slate-600">
