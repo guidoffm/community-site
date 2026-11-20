@@ -13,7 +13,8 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="card mx-auto max-w-lg">
-      <h1 className="mb-4">Registrieren</h1>
+      <h1 className="mb-1"><span className="text-gradient">Mach mit!</span></h1>
+      <p className="mb-5 text-sm text-slate-500">Konto anlegen, Communities wählen, loslegen.</p>
       <ActionForm action={register} className="space-y-4">
         <input type="hidden" name="next" value={next ?? ""} />
         {/* Honeypot – für Menschen unsichtbar */}

@@ -25,3 +25,12 @@ export async function leaveCommunity(fd: FormData) {
   await communities.leaveCommunity(actor, String(fd.get("communityId")));
   revalidatePath("/", "layout");
 }
+
+export async function updateCommunity(slug: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const actor = await requireActor();
+    await communities.updateCommunity(actor, slug, formObject(fd));
+    revalidatePath(`/c/${slug}`);
+    redirect(communityUrl(slug, "/?saved=1"));
+  });
+}

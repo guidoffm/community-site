@@ -5,8 +5,16 @@ import { listCommunities } from "@/services/communities";
 import { upcomingForUser } from "@/services/events";
 import { unreadCount } from "@/services/messages";
 import { CommunityGrid } from "@/components/community-grid";
+import { Blobs, DateBadge } from "@/components/decor";
 
 export const dynamic = "force-dynamic";
+
+const FEATURES = [
+  { icon: "💬", title: "Nachrichten", text: "Schreib allen oder einzelnen Mitgliedern – Benachrichtigung per E-Mail inklusive." },
+  { icon: "📅", title: "Events", text: "Treffen organisieren, Zusagen sammeln, Termin direkt in den Kalender übernehmen." },
+  { icon: "📸", title: "Fotos", text: "Nach dem Event teilen Teilnehmer ihre Bilder – nur für die, die dabei waren." },
+  { icon: "🏡", title: "Homepage", text: "Deine eigene Seite mit Text und Galerie für deine Communities." },
+];
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const { welcome } = await searchParams;
@@ -15,18 +23,33 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
 
   if (!actor) {
     return (
-      <div className="space-y-10">
-        <section className="py-10 text-center">
-          <h1 className="text-4xl">Willkommen bei {APP_NAME}</h1>
-          <p className="mx-auto mt-4 max-w-xl text-slate-600">
-            Tritt Communities bei, schreib anderen Mitgliedern, organisiere Events und teile Fotos davon.
+      <div className="space-y-14">
+        <section className="relative isolate -mx-4 overflow-hidden rounded-none px-4 py-14 text-center sm:mx-0 sm:rounded-3xl">
+          <Blobs />
+          <span className="chip bg-white/80 text-brand-dark shadow-sm">✨ Für alle, die zusammengehören</span>
+          <h1 className="mx-auto mt-5 max-w-3xl text-4xl leading-tight sm:text-6xl">
+            Deine Leute. <span className="text-gradient">Deine Community.</span>
+          </h1>
+          <p className="mx-auto mt-5 max-w-xl text-lg text-slate-600">
+            Bei {APP_NAME} triffst du Gleichgesinnte, schreibst dir Nachrichten, organisierst Events und teilst Fotos davon.
           </p>
-          <div className="mt-6 flex justify-center gap-3">
-            <a href="/register" className="btn">Kostenlos registrieren</a>
-            <a href="/login" className="btn-secondary">Anmelden</a>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <a href="/register" className="btn px-6 py-3 text-base">Kostenlos mitmachen</a>
+            <a href="/communities" className="btn-secondary px-6 py-3 text-base">Communities entdecken</a>
           </div>
         </section>
-        <section className="space-y-3">
+
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="card card-hover">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-light text-2xl">{f.icon}</div>
+              <h3 className="mt-3 font-bold">{f.title}</h3>
+              <p className="mt-1 text-sm text-slate-600">{f.text}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="space-y-4">
           <h2>Communities</h2>
           <CommunityGrid communities={all} />
         </section>
@@ -38,40 +61,55 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
   const mine = all.filter((c) => c.isMember);
 
   return (
-    <div className="space-y-8">
-      {welcome && <p className="alert-success">Deine E-Mail-Adresse ist bestätigt – willkommen bei {APP_NAME}!</p>}
-      <h1>Hallo {actor.name}!</h1>
-      {unread > 0 && (
-        <a href="/messages" className="block rounded-lg bg-brand-light p-4 text-brand hover:opacity-90">
-          Du hast <strong>{unread}</strong> ungelesene Nachricht{unread === 1 ? "" : "en"}. →
-        </a>
-      )}
-      <section className="space-y-3">
-        <h2>Kommende Events</h2>
+    <div className="space-y-10">
+      {welcome && <p className="alert-success">🎉 Deine E-Mail-Adresse ist bestätigt – willkommen bei {APP_NAME}!</p>}
+      <section className="relative isolate overflow-hidden rounded-3xl bg-gradient-brand p-6 text-white shadow-lg shadow-pop/20 sm:p-8">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_85%_15%,rgba(255,255,255,.35),transparent_40%)]" />
+        <p className="text-sm font-semibold uppercase tracking-widest text-white/80">Schön, dass du da bist</p>
+        <h1 className="mt-1 text-3xl text-white sm:text-4xl">Hallo {actor.name.split(" ")[0]}! 👋</h1>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <a href="/messages" className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold backdrop-blur transition hover:bg-white/30">
+            💬 Nachrichten
+            {unread > 0 && <span className="chip bg-white text-pop">{unread} neu</span>}
+          </a>
+          <a href="/communities" className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold backdrop-blur transition hover:bg-white/30">
+            🌍 Communities
+          </a>
+          <a href="/homepage" className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold backdrop-blur transition hover:bg-white/30">
+            🏡 Meine Homepage
+          </a>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2>📅 Kommende Events</h2>
         {events.length === 0 ? (
-          <p className="text-sm text-slate-500">Keine anstehenden Events in deinen Communities.</p>
+          <p className="card text-sm text-slate-500">Keine anstehenden Events in deinen Communities – vielleicht organisierst du das nächste?</p>
         ) : (
           <ul className="list">
             {events.map((e) => (
               <li key={e.id}>
-                <a href={communityUrl(e.communitySlug, `/events/${e.id}`)} className="list-row">
-                  <span className="w-36 text-sm text-slate-500">{formatShort(e.startsAt)}</span>
-                  <span className="font-medium">{e.title}</span>
-                  <span className="text-sm text-slate-500">{e.communityTitle}</span>
-                  {e.registered && <span className="ml-auto rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">angemeldet</span>}
+                <a href={communityUrl(e.communitySlug, `/events/${e.id}`)} className="list-row flex-nowrap">
+                  <DateBadge date={e.startsAt} slug={e.communitySlug} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{e.title}</span>
+                    <span className="block text-sm text-slate-500">{formatShort(e.startsAt)} · {e.communityTitle}</span>
+                  </span>
+                  {e.registered && <span className="chip bg-emerald-100 text-emerald-800">✓ dabei</span>}
                 </a>
               </li>
             ))}
           </ul>
         )}
       </section>
-      <section className="space-y-3">
+
+      <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2>Meine Communities</h2>
+          <h2>💜 Meine Communities</h2>
           <a href="/communities" className="link text-sm">Alle Communities →</a>
         </div>
         {mine.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="card text-sm text-slate-500">
             Du bist noch in keiner Community. <a href="/communities" className="link">Jetzt eine finden</a>.
           </p>
         ) : (

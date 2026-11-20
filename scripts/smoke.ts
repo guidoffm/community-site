@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
 import { authenticate, deleteUnverifiedUsers, peekVerification, register, verifyEmail } from "../src/services/users";
-import { createCommunity, getCommunity, joinCommunity } from "../src/services/communities";
+import { createCommunity, getCommunity, joinCommunity, updateCommunity } from "../src/services/communities";
 import { createEvent, getEvent, setRegistration } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
@@ -54,10 +54,19 @@ const registerVerified = async (name: string, email: string, communityIds: strin
   const r = await register({ name, email, password: "geheim123", communityIds }, `smoke-v-${suffix}`);
   return (await verifyEmail(r.token)).user;
 };
+const registerVerifiedEarly = async (email: string) => {
+  const r = await register({ name: "Dora Fremd", email, password: "geheim123" }, `smoke-e-${suffix}`);
+  return (await verifyEmail(r.token)).user;
+};
 const a = actor(verified.user);
 await createCommunity(a, { title: "Nicht erlaubt" }).then(() => ok(false, "Nicht-Admin"), (e) => ok(/Site-Admins/.test(e.message), "Nur Site-Admins dürfen Communities anlegen"));
 const adminCommunity = await createCommunity({ ...a, isSiteAdmin: true }, { title: `Smoke ${suffix}`, slug: `smoke-${suffix}` });
 ok(adminCommunity.slug === `smoke-${suffix}`, "Site-Admin legt Community an");
+const upd = await updateCommunity(a, adminCommunity.slug, { title: "Smoke neu", description: "Neue Beschreibung" });
+ok(upd.description === "Neue Beschreibung" && upd.slug === adminCommunity.slug, "Community-Admin ändert Titel/Beschreibung (Slug bleibt)");
+const outsider = actor(await registerVerifiedEarly(`dora-${suffix}@example.org`));
+await updateCommunity(outsider, adminCommunity.slug, { title: "Hack", description: "" }).then(() => ok(false, "Fremde ändern"), () => ok(true, "Nicht-Admins dürfen nicht bearbeiten"));
+ok((await updateCommunity({ ...outsider, isSiteAdmin: true }, adminCommunity.slug, { title: "Smoke SA", description: "x" })).title === "Smoke SA", "Site-Admin darf jede Community bearbeiten");
 await db().delete(t.communities).where(eq(t.communities.id, adminCommunity.id));
 const b = actor(await registerVerified("Bernd Test", `bernd-${suffix}@example.org`));
 await joinCommunity(b, ossis.id);

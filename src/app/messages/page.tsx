@@ -21,7 +21,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <h1>Nachrichten</h1>
+      <h1><span className="text-gradient">Nachrichten</span></h1>
       <nav className="flex gap-2 text-sm">
         <a href="/messages" className={isSent ? "btn-secondary" : "btn"}>Posteingang</a>
         <a href="/messages?box=sent" className={isSent ? "btn" : "btn-secondary"}>Gesendet</a>
@@ -33,8 +33,8 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
         <ul className="list">
           {rows.map((r) => (
             <li key={r.id}>
-              <a href={`/messages/${r.id}`} className={`grid gap-x-4 px-5 py-3 hover:bg-slate-50 sm:grid-cols-[12rem_1fr_auto] ${r.unread ? "font-semibold" : ""}`}>
-                <span className="truncate">{r.unread && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand" />}{r.who}</span>
+              <a href={`/messages/${r.id}`} className={`grid gap-x-4 px-5 py-3 hover:bg-violet-50/60 sm:grid-cols-[12rem_1fr_auto] ${r.unread ? "font-semibold" : ""}`}>
+                <span className="truncate">{r.unread && <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-pop" />}{r.who}</span>
                 <span className="truncate">{r.subject} <span className="font-normal text-slate-400">· {r.community}</span></span>
                 <span className="text-sm font-normal text-slate-500">{formatShort(r.date)}</span>
               </a>

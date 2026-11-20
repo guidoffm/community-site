@@ -9,10 +9,11 @@ import { APP_URL, MAIN_HOST, PROTOCOL, ROOT_DOMAIN, communityUrl, slugFromHost }
  *   <slug>.15k.de/                 → intern /c/<slug>
  *   <slug>.15k.de/events/...       → intern /c/<slug>/events/...
  *   <slug>.15k.de/messages/new     → intern /c/<slug>/messages/new
+ *   <slug>.15k.de/settings         → intern /c/<slug>/settings (Admins)
  *   (/api/* läuft auf jedem Host direkt, z. B. Bilder)
  *   <slug>.15k.de/<sonstiges>      → 308 auf www.15k.de/<sonstiges>
  */
-const COMMUNITY_PATHS = /^\/(?:$|events(?:\/|$)|messages\/new$)/
+const COMMUNITY_PATHS = /^\/(?:$|events(?:\/|$)|messages\/new$|settings$)/
 
 export function proxy(req: NextRequest) {
   const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").toLowerCase()

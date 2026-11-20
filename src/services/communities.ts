@@ -98,3 +98,28 @@ export async function joinCommunity(actor: Actor, communityId: string) {
 export async function leaveCommunity(actor: Actor, communityId: string) {
   await db().delete(t.memberships).where(and(eq(t.memberships.communityId, communityId), eq(t.memberships.userId, actor.userId)));
 }
+
+/** Darf der Actor die Community verwalten (Titel/Beschreibung)? Site-Admins immer, sonst Community-Admins. */
+export function canManage(actor: Actor | null, membership: { role: "admin" | "member" } | null | undefined) {
+  return !!actor && (actor.isSiteAdmin || membership?.role === "admin");
+}
+
+export async function manageContext(actor: Actor, slug: string) {
+  const community = await getCommunity(slug);
+  const membership = await membershipOf(actor.userId, community.id);
+  if (!canManage(actor, membership)) throw forbidden("Nur Admins dürfen die Community bearbeiten.");
+  return community;
+}
+
+const updateInput = z.object({
+  title: z.string().trim().min(3, "Der Titel muss mindestens 3 Zeichen lang sein.").max(80),
+  description: z.string().trim().max(2000).nullable().transform((v) => v ?? ""),
+});
+
+/** Titel und Beschreibung ändern. Der Slug bleibt fest (Subdomain). */
+export async function updateCommunity(actor: Actor, slug: string, input: unknown) {
+  const community = await manageContext(actor, slug);
+  const data = updateInput.parse(input);
+  const [c] = await db().update(t.communities).set({ ...data, updatedAt: new Date() }).where(eq(t.communities.id, community.id)).returning();
+  return c;
+}

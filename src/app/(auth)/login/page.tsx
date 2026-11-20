@@ -7,7 +7,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { next } = await searchParams;
   return (
     <div className="card mx-auto max-w-sm">
-      <h1 className="mb-4">Anmelden</h1>
+      <h1 className="mb-1"><span className="text-gradient">Willkommen zurück!</span></h1>
+      <p className="mb-5 text-sm text-slate-500">Melde dich an, um deine Communities zu sehen.</p>
       <ActionForm action={login} className="space-y-4">
         <input type="hidden" name="next" value={next ?? "/"} />
         <label className="block">

@@ -25,7 +25,7 @@ export default async function HomepageView({ params }: { params: Promise<{ id: s
     <article className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl">{hp.title}</h1>
+          <h1 className="text-4xl"><span className="text-gradient">{hp.title}</span></h1>
           <p className="mt-1 text-sm text-slate-500">von {hp.ownerName}</p>
         </div>
         {hp.isOwner && <a href="/homepage" className="btn-secondary">Bearbeiten</a>}

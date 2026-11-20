@@ -18,7 +18,7 @@ export default async function EditHomepagePage({ searchParams }: { searchParams:
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1>Meine Homepage</h1>
+        <h1><span className="text-gradient">Meine Homepage</span></h1>
         {hp && <a href={`/u/${actor.userId}`} className="btn-secondary">Ansehen</a>}
       </div>
 
