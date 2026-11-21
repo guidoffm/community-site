@@ -103,6 +103,32 @@ export async function notifyRegistration(tx: Tx, e: EventInfo, user: Recipient, 
   );
 }
 
+/** Erinnerung vor dem Event (3 Tage, 1 Tag, 4 Stunden). */
+export async function notifyEventReminder(tx: Tx, e: EventInfo, user: Recipient, label: string) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Erinnerung: ${e.title} ist ${label}`,
+        text: `Hallo ${user.name},\n\nkleine Erinnerung: „${e.title}“ in ${e.communityName} ist ${label}.\n\nWann: ${when}\nWo: ${e.location}\nKarte: ${eventMapUrl(e)}\n\nDetails: ${url}\n\nDoch keine Zeit? Du kannst dich auf der Event-Seite abmelden.\n`,
+        html: layout(
+          `⏰ ${e.title} ist ${label}`,
+          `<p>Hallo ${escapeHtml(user.name)}, kleine Erinnerung an dein Event in <strong>${escapeHtml(e.communityName)}</strong>:</p>
+           <table style="border-collapse:collapse">
+             <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wann</td><td>${escapeHtml(when)}</td></tr>
+             ${whereRow(e)}
+           </table>
+           <p style="color:#64748b;font-size:14px">Doch keine Zeit? Du kannst dich auf der Event-Seite abmelden.</p>`,
+          { label: "Zum Event", url },
+        ),
+      },
+    ],
+    tx,
+  );
+}
+
 export async function notifyNewEvent(tx: Tx, e: EventInfo, recipients: Recipient[]) {
   const url = eventUrl(e.communitySlug, e.id);
   const ics = Buffer.from(buildIcs({ ...e, url }));

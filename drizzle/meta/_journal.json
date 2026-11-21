@@ -50,6 +50,13 @@
       "when": 1795220374399,
       "tag": "0006_event_map_url",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795220554627,
+      "tag": "0007_event_reminders",
+      "breakpoints": true
     }
   ]
 }

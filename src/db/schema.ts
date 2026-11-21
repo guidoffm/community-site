@@ -123,6 +123,19 @@ export const eventRegistrations = pgTable(
   (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
 );
 
+/** Verschickte Event-Erinnerungen (je Person und Stufe höchstens eine). Job event-reminders. */
+export const eventReminders = pgTable(
+  "event_reminders",
+  {
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** 3d | 1d | 4h */
+    kind: text("kind").notNull(),
+    sentAt: ts("sent_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.userId, t.kind] })],
+);
+
 // ---------------------------------------------------------------- Homepages & Bilder
 export const visibility = pgEnum("visibility", [
   "members", // nur eingeloggte Nutzer, die eine Community mit dem Inhaber teilen

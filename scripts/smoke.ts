@@ -11,6 +11,7 @@ import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "..
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
 import { saveHomepage, viewHomepage } from "../src/services/homepages";
 import { processOutbox } from "../src/services/outbox";
+import { sendEventReminders } from "../src/services/reminders";
 import { deleteAccount } from "../src/services/account";
 import type { Actor } from "../src/lib/auth/session";
 
@@ -150,6 +151,36 @@ await deleteImage(a, photo.id);
 ok((await eventPhotos(ev.id)).length === 0, "Organisator löscht Event-Foto");
 const pending = await db().select().from(t.storageDeletions);
 ok(pending.length === 0, "Speicherobjekte gelöscht (keine offenen Löschungen)");
+
+// --- Erinnerungen
+const remEv = await createEvent(a, "ossis", { title: "Erinnerungstest", description: "x", location: "Leipzig", startsAt: local, endsAt: null });
+await setRegistration(b, "ossis", remEv.id, true);
+await setRegistration(e, "ossis", remEv.id, true);
+const H = 3_600_000;
+// Event in 70 h; b hat sich vor 5 Tagen angemeldet, e erst vor 1 h (innerhalb des 3-Tage-Fensters)
+await db().update(t.events).set({ startsAt: new Date(Date.now() + 70 * H), createdAt: new Date(Date.now() - 6 * 24 * H) }).where(eq(t.events.id, remEv.id));
+await db().update(t.eventRegistrations).set({ createdAt: new Date(Date.now() - 5 * 24 * H) }).where(and(eq(t.eventRegistrations.eventId, remEv.id), eq(t.eventRegistrations.userId, b.userId)));
+await db().update(t.eventRegistrations).set({ createdAt: new Date(Date.now() - 1 * H) }).where(and(eq(t.eventRegistrations.eventId, remEv.id), eq(t.eventRegistrations.userId, e.userId)));
+const remKinds = async () => (await db().select().from(t.eventReminders).where(eq(t.eventReminders.eventId, remEv.id))).map((r) => `${r.userId === b.userId ? "b" : r.userId === a.userId ? "a" : "e"}:${r.kind}`).sort();
+await sendEventReminders();
+ok(JSON.stringify(await remKinds()) === JSON.stringify(["a:3d", "b:3d"]), "3-Tage-Erinnerung an Teilnehmer + Organisator, nicht an frisch Angemeldete");
+await sendEventReminders();
+ok((await remKinds()).length === 2, "keine doppelte Erinnerung beim nächsten Lauf");
+/** Zeit vorspulen: Beginn rückt näher, Anmeldungen/Erstellung verschieben sich mit (wie in echt). */
+const advance = async (hours: number) => {
+  const d = sql`make_interval(hours => ${hours})`;
+  await db().execute(sql`update events set starts_at = starts_at - ${d}, created_at = created_at - ${d} where id = ${remEv.id}`);
+  await db().execute(sql`update event_registrations set created_at = created_at - ${d} where event_id = ${remEv.id}`);
+};
+await advance(50); // Beginn in 20 h
+await sendEventReminders();
+ok(JSON.stringify(await remKinds()) === JSON.stringify(["a:1d", "a:3d", "b:1d", "b:3d", "e:1d"]), "1-Tag-Erinnerung an alle");
+await advance(17); // Beginn in 3 h
+await sendEventReminders();
+ok((await remKinds()).filter((k) => k.endsWith(":4h")).length === 3, "4-Stunden-Erinnerung an alle");
+const remMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, b.email))).find((m) => m.subject === "Erinnerung: Erinnerungstest ist in 4 Stunden");
+ok(remMail && remMail.text.includes("Karte: "), "Erinnerungsmail mit Ort und Karten-Link");
+await db().delete(t.events).where(eq(t.events.id, remEv.id));
 
 // --- Konto löschen
 const del = actor(await registerVerified("Gustav Weg", `gustav-${suffix}@example.org`, [ossis.id]));

@@ -7,6 +7,7 @@ import { AppError } from "@/lib/errors";
 import { purgeRateLimits } from "@/lib/auth/rate-limit";
 import { processStorageDeletions } from "./storage-cleanup";
 import { deleteUnverifiedUsers } from "./users";
+import { sendEventReminders } from "./reminders";
 
 interface JobDef {
   title: string;
@@ -27,6 +28,11 @@ export const jobs: Record<string, JobDef> = {
       const runs = await db().delete(t.jobRuns).where(lt(t.jobRuns.startedAt, new Date(Date.now() - 90 * day))).returning({ id: t.jobRuns.id });
       return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, rateLimitHits: await purgeRateLimits() };
     },
+  },
+  "event-reminders": {
+    title: "Erinnerungen an Event-Teilnehmer (3 Tage, 1 Tag, 4 Stunden vorher)",
+    schedule: "alle 10 Minuten",
+    run: async () => sendEventReminders(),
   },
   "unverified-cleanup": {
     title: "Unbestätigte Registrierungen löschen (älter als 24 h)",
