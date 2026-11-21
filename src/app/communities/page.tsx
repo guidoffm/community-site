@@ -5,7 +5,7 @@ import { listCommunities } from "@/services/communities";
 import { joinCommunity, leaveCommunity } from "@/app/actions/communities";
 import { CommunityLogo } from "@/components/decor";
 
-export const metadata = { title: "Communities" };
+export const metadata = { title: "Communities", alternates: { canonical: "/communities" } };
 export const dynamic = "force-dynamic";
 
 export default async function CommunitiesPage() {

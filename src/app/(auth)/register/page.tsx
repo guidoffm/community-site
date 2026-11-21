@@ -5,7 +5,7 @@ import { getActor } from "@/lib/auth/session";
 import { listCommunities } from "@/services/communities";
 import { PRIVACY_URL } from "@/lib/domains";
 
-export const metadata = { title: "Registrieren" };
+export const metadata = { title: "Registrieren", alternates: { canonical: "/register" } };
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ community?: string; next?: string }> }) {
   if (await getActor()) redirect("/");

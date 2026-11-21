@@ -88,5 +88,5 @@ export function proxy(req: NextRequest) {
 
 export const config = {
   // API, Next-Assets und statische Root-Dateien laufen auf jedem Host direkt.
-  matcher: ["/((?!api/|_next/|favicon\\.ico$|icon\\.svg$|robots\\.txt$).*)"],
+  matcher: ["/((?!api/|_next/|favicon\\.ico$|icon\\.svg$|robots\\.txt$|sitemap\\.xml$).*)"],
 }

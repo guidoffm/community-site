@@ -1,6 +1,6 @@
 import { LoginOptions } from "./login-options";
 
-export const metadata = { title: "Anmelden" };
+export const metadata = { title: "Anmelden", alternates: { canonical: "/login" } };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;

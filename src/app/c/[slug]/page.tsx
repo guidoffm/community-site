@@ -13,7 +13,14 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const c = await getCommunity((await params).slug).catch(() => null);
-  return c ? { title: c.title, description: c.description || undefined } : {};
+  if (!c) return {};
+  const description = c.description || `Die Community ${c.title} auf 15k – Nachrichten, Events und Fotos.`;
+  return {
+    title: c.title,
+    description,
+    alternates: { canonical: communityUrl(c.slug) },
+    openGraph: { title: c.title, description, url: communityUrl(c.slug) },
+  };
 }
 
 export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ saved?: string }> }) {

@@ -3,14 +3,21 @@ import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 import { ConfirmScript } from "@/components/confirm-script";
-import { APP_NAME, IMPRINT_URL, OPERATOR_NAME, PRIVACY_URL, siteUrl } from "@/lib/domains";
+import { APP_NAME, APP_URL, IMPRINT_URL, OPERATOR_NAME, PRIVACY_URL, siteUrl } from "@/lib/domains";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", weight: ["600", "700", "800"] });
 
+const DESCRIPTION =
+  "15k – die Plattform für Gruppen, die zusammengehören: eigene Community-Adresse, Nachrichten, Events mit Kalendereintrag und Erinnerungen, Fotos und Homepages.";
+
 export const metadata: Metadata = {
-  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: "Communities, Nachrichten, Events und Fotos – für alle, die zusammengehören.",
+  metadataBase: new URL(APP_URL),
+  title: { default: `${APP_NAME} – Communities, Nachrichten, Events & Fotos`, template: `%s · ${APP_NAME}` },
+  description: DESCRIPTION,
+  applicationName: APP_NAME,
+  openGraph: { type: "website", siteName: APP_NAME, locale: "de_DE", description: DESCRIPTION },
+  alternates: { canonical: "/" },
 };
 
 export const viewport: Viewport = { themeColor: "#7c3aed" };
