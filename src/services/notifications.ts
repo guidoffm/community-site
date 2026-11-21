@@ -1,6 +1,6 @@
 // Benachrichtigungs-Mails rendern und in die Outbox legen. Bewusst ohne Nachrichteninhalt:
 // die Mail soll die Mitglieder auf die Plattform holen.
-import { APP_NAME, APP_URL, communityUrl, siteUrl } from "@/lib/domains";
+import { APP_NAME, APP_URL, IMPRINT_URL, OPERATOR_NAME, PRIVACY_URL, communityUrl, siteUrl } from "@/lib/domains";
 import { formatEventRange } from "@/lib/dates";
 import { buildIcs, eventUrl } from "@/lib/ics";
 import { escapeHtml, teaser } from "@/lib/utils";
@@ -17,7 +17,8 @@ function layout(heading: string, bodyHtml: string, cta: { label: string; url: st
   ${bodyHtml}
   <p style="margin:24px 0"><a href="${cta.url}" style="background:#1f4e79;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;display:inline-block">${escapeHtml(cta.label)}</a></p>
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
-  <p style="color:#94a3b8;font-size:13px">Diese E-Mail wurde automatisch von ${escapeHtml(APP_NAME)} versandt (<a href="${APP_URL}" style="color:#94a3b8">${APP_URL.replace(/^https?:\/\//, "")}</a>).</p>
+  <p style="color:#94a3b8;font-size:13px">Diese E-Mail wurde automatisch von ${escapeHtml(APP_NAME)} versandt (<a href="${APP_URL}" style="color:#94a3b8">${APP_URL.replace(/^https?:\/\//, "")}</a>).<br>
+  ${escapeHtml(APP_NAME)} ist ein Angebot der ${escapeHtml(OPERATOR_NAME)} · <a href="${IMPRINT_URL}" style="color:#94a3b8">Impressum</a> · <a href="${PRIVACY_URL}" style="color:#94a3b8">Datenschutz</a></p>
 </div>`;
 }
 
@@ -207,6 +208,27 @@ export async function notifyAccountDeleted(tx: Tx, user: Recipient) {
            <p>dein Konto bei ${escapeHtml(APP_NAME)} und deine Daten (Mitgliedschaften, Nachrichten, Homepage, Bilder und anstehende Events) wurden gelöscht. Vergangene Events, die du organisiert hast, bleiben ohne deinen Namen als „Gelöschter Benutzer“ erhalten.</p>
            <p>Schade, dass du gehst – du kannst dich jederzeit neu registrieren.</p>`,
           { label: "Zu " + APP_NAME, url: siteUrl("/") },
+        ),
+      },
+    ],
+    tx,
+  );
+}
+
+export async function notifyPasswordReset(tx: Tx, user: Recipient, token: string) {
+  const url = siteUrl(`/password/reset?token=${encodeURIComponent(token)}`);
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Passwort zurücksetzen bei ${APP_NAME}`,
+        text: `Hallo ${user.name},\n\nüber diesen Link kannst du innerhalb einer Stunde ein neues Passwort festlegen:\n${url}\n\nDu hast das nicht angefordert? Dann ignoriere diese E-Mail – dein Passwort bleibt unverändert.\n`,
+        html: layout(
+          "Passwort zurücksetzen",
+          `<p>Hallo ${escapeHtml(user.name)},</p>
+           <p>über den Button kannst du <strong>innerhalb einer Stunde</strong> ein neues Passwort festlegen.</p>
+           <p style="color:#64748b;font-size:14px">Du hast das nicht angefordert? Dann ignoriere diese E-Mail – dein Passwort bleibt unverändert.</p>`,
+          { label: "Neues Passwort festlegen", url },
         ),
       },
     ],

@@ -57,6 +57,13 @@
       "when": 1795220554627,
       "tag": "0007_event_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795252559232,
+      "tag": "0008_password_resets",
+      "breakpoints": true
     }
   ]
 }

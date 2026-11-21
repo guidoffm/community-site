@@ -3,6 +3,10 @@
 import { sql } from "drizzle-orm";
 import { db, t, type Db } from "@/db";
 import { sendMail } from "@/lib/mail";
+import { APP_NAME, IMPRINT_URL, OPERATOR_NAME, PRIVACY_URL } from "@/lib/domains";
+
+/** Pflichtangaben (Betreiber, Impressum, Datenschutz) unter jeder Text-Mail */
+const TEXT_FOOTER = `\n--\n${APP_NAME} ist ein Angebot der ${OPERATOR_NAME}\nImpressum: ${IMPRINT_URL}\nDatenschutz: ${PRIVACY_URL}\n`;
 
 export interface OutgoingMail {
   to: { email: string; name?: string };
@@ -21,7 +25,7 @@ export async function enqueueMails(mails: OutgoingMail[], tx: Db | Tx = db()) {
         toEmail: m.to.email,
         toName: m.to.name ?? null,
         subject: m.subject,
-        text: m.text,
+        text: m.text + TEXT_FOOTER,
         html: m.html ?? null,
         attachments: m.attachments?.map((a) => ({ filename: a.filename, contentType: a.contentType, contentBase64: a.content.toString("base64") })) ?? null,
       })),

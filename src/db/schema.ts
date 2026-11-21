@@ -45,6 +45,18 @@ export const emailVerifications = pgTable(
   (t) => [index("email_verifications_user_idx").on(t.userId)],
 );
 
+/** Links zum Zurücksetzen des Passworts (1 h gültig, einmalig). Gespeichert wird nur der SHA-256-Hash. */
+export const passwordResets = pgTable(
+  "password_resets",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: ts("expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("password_resets_user_idx").on(t.userId)],
+);
+
 // ---------------------------------------------------------------- Communities
 export const memberRole = pgEnum("member_role", ["admin", "member"]);
 

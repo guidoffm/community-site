@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { blockedFor, clearFailures, recordFailure } from "@/lib/auth/rate-limit";
-import { notifyEmailVerification } from "./notifications";
+import { notifyEmailVerification, notifyPasswordReset } from "./notifications";
 
 /** Frist für die Bestätigung der E-Mail-Adresse; danach löscht der Job unverified-cleanup das Konto. */
 export const VERIFICATION_TTL_MS = 24 * 3_600_000;
@@ -103,7 +103,8 @@ export async function deleteUnverifiedUsers() {
     .where(and(isNull(t.users.emailVerifiedAt), lt(t.users.createdAt, cutoff)))
     .returning({ id: t.users.id });
   const tokens = await db().delete(t.emailVerifications).where(lt(t.emailVerifications.expiresAt, new Date())).returning({ h: t.emailVerifications.tokenHash });
-  return { usersDeleted: deleted.length, expiredLinksDeleted: tokens.length };
+  const resets = await db().delete(t.passwordResets).where(lt(t.passwordResets.expiresAt, new Date())).returning({ h: t.passwordResets.tokenHash });
+  return { usersDeleted: deleted.length, expiredLinksDeleted: tokens.length + resets.length };
 }
 
 export async function authenticate(emailRaw: string, password: string, ip: string) {
@@ -137,4 +138,74 @@ export async function grantConfiguredSiteAdmins() {
     .where(and(inArray(t.users.email, emails), isNotNull(t.users.emailVerifiedAt), eq(t.users.isSiteAdmin, false)))
     .returning({ id: t.users.id });
   return r.length;
+}
+
+// ---------------------------------------------------------------- Passwort zurücksetzen / ändern
+export const PASSWORD_RESET_TTL_MS = 3_600_000;
+const passwordSchema = z.string().min(8, "Das Passwort muss mindestens 8 Zeichen lang sein.").max(200);
+
+/**
+ * Link zum Zurücksetzen anfordern. Antwortet immer gleich (verrät nicht, ob es die Adresse gibt).
+ * Rückgabe enthält das Token nur für Tests; die Web-Action verwirft es.
+ */
+export async function requestPasswordReset(emailRaw: string, ip: string): Promise<{ token?: string }> {
+  const email = String(emailRaw ?? "").trim().toLowerCase();
+  const keys: [string, number][] = [[`pwreset:ip:${ip}`, 10], [`pwreset:email:${email}`, 3]];
+  const wait = await blockedFor(keys);
+  if (wait) throw new AppError("FORBIDDEN", `Zu viele Anfragen. Bitte in ${wait} Minuten erneut versuchen.`);
+  await recordFailure(...keys.map(([k]) => k));
+  if (!z.email().safeParse(email).success) return {};
+
+  const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
+  if (!user?.emailVerifiedAt) return {};
+  const token = randomBytes(32).toString("base64url");
+  await db().transaction(async (tx) => {
+    await tx.delete(t.passwordResets).where(eq(t.passwordResets.userId, user.id));
+    await tx.insert(t.passwordResets).values({ tokenHash: hashToken(token), userId: user.id, expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS) });
+    await notifyPasswordReset(tx, { email: user.email, name: user.name }, token);
+  });
+  return { token };
+}
+
+export async function peekPasswordReset(token: string) {
+  const r = await db().query.passwordResets.findFirst({
+    where: and(eq(t.passwordResets.tokenHash, hashToken(token)), gt(t.passwordResets.expiresAt, new Date())),
+  });
+  if (!r) return null;
+  const user = await db().query.users.findFirst({ where: eq(t.users.id, r.userId), columns: { email: true, name: true } });
+  return user ?? null;
+}
+
+/** Neues Passwort setzen. Alle bestehenden Sitzungen werden dadurch ungültig. */
+export async function resetPassword(token: string, newPassword: unknown) {
+  const password = passwordSchema.parse(newPassword);
+  return db().transaction(async (tx) => {
+    const [r] = await tx
+      .delete(t.passwordResets)
+      .where(and(eq(t.passwordResets.tokenHash, hashToken(token)), gt(t.passwordResets.expiresAt, new Date())))
+      .returning();
+    if (!r) throw new AppError("NOT_FOUND", "Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.");
+    const [user] = await tx
+      .update(t.users)
+      .set({ passwordHash: await hashPassword(password), passwordChangedAt: new Date() })
+      .where(eq(t.users.id, r.userId))
+      .returning();
+    await tx.delete(t.passwordResets).where(eq(t.passwordResets.userId, user.id));
+    return user;
+  });
+}
+
+/** Passwort ändern (angemeldet, mit aktuellem Passwort). Andere Sitzungen werden ungültig. */
+export async function changePassword(userId: string, current: string, next: unknown) {
+  const password = passwordSchema.parse(next);
+  const key = `pwchange:${userId}`;
+  const wait = await blockedFor([[key, 5]]);
+  if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
+  const user = await db().query.users.findFirst({ where: eq(t.users.id, userId) });
+  if (!user || !(await verifyPassword(current, user.passwordHash))) {
+    await recordFailure(key);
+    throw new AppError("UNAUTHORIZED", "Das aktuelle Passwort ist falsch.");
+  }
+  await db().update(t.users).set({ passwordHash: await hashPassword(password), passwordChangedAt: new Date() }).where(eq(t.users.id, userId));
+  await clearFailures(key);
 }

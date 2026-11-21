@@ -20,6 +20,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <input name="password" type="password" required autoComplete="current-password" className="input" />
         </label>
         <Submit className="btn w-full">Anmelden</Submit>
+        <p className="text-right text-sm"><a href="/password/forgot" className="link">Passwort vergessen?</a></p>
       </ActionForm>
       <p className="mt-4 text-sm text-slate-600">
         Noch kein Konto? <a href={`/register${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="link">Jetzt registrieren</a>

@@ -1,5 +1,5 @@
 import { requireActor } from "@/lib/auth/session";
-import { deleteAccount } from "@/app/actions/auth";
+import { changePassword, deleteAccount } from "@/app/actions/auth";
 import { ActionForm, Submit } from "@/components/form";
 import { Avatar } from "@/components/decor";
 
@@ -19,6 +19,27 @@ export default async function AccountPage() {
           <p className="text-sm text-slate-500">{actor.email}</p>
           {actor.isSiteAdmin && <span className="chip mt-1 bg-amber-100 text-amber-800">Site-Admin</span>}
         </div>
+      </section>
+
+      <section className="card space-y-4">
+        <h2>Passwort ändern</h2>
+        <ActionForm action={changePassword} className="space-y-3" resetOnSuccess>
+          <label className="block">
+            <span className="label">Aktuelles Passwort</span>
+            <input name="current" type="password" required autoComplete="current-password" className="input" />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="label">Neues Passwort (mind. 8 Zeichen)</span>
+              <input name="password" type="password" required minLength={8} autoComplete="new-password" className="input" />
+            </label>
+            <label className="block">
+              <span className="label">Neues Passwort wiederholen</span>
+              <input name="password2" type="password" required minLength={8} autoComplete="new-password" className="input" />
+            </label>
+          </div>
+          <Submit className="btn">Passwort ändern</Submit>
+        </ActionForm>
       </section>
 
       <section className="card space-y-4 border-rose-200">

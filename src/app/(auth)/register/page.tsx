@@ -3,6 +3,7 @@ import { ActionForm, Submit } from "@/components/form";
 import { register } from "@/app/actions/auth";
 import { getActor } from "@/lib/auth/session";
 import { listCommunities } from "@/services/communities";
+import { PRIVACY_URL } from "@/lib/domains";
 
 export const metadata = { title: "Registrieren" };
 
@@ -49,6 +50,10 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           </fieldset>
         )}
         <p className="text-xs text-slate-500">Du bekommst eine E-Mail mit einem Bestätigungslink. Bestätigst du ihn nicht innerhalb von 24 Stunden, wird die Registrierung gelöscht.</p>
+        <p className="text-xs text-slate-500">
+          Welche Daten wir verarbeiten und welche Rechte du hast, steht in der{" "}
+          <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="link">Datenschutzerklärung</a>.
+        </p>
         <Submit className="btn w-full">Konto erstellen</Submit>
       </ActionForm>
       <p className="mt-4 text-sm text-slate-600">

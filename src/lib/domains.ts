@@ -7,6 +7,11 @@
 export const APP_URL = (process.env.APP_URL ?? "http://www.lvh.me:3000").replace(/\/+$/, "");
 export const APP_NAME = process.env.APP_NAME ?? "15k";
 
+/** Betreiber und Pflichtangaben (Impressum § 5 DDG, Datenschutzerklärung Art. 13 DSGVO) */
+export const OPERATOR_NAME = process.env.OPERATOR_NAME ?? "Altiros GmbH";
+export const IMPRINT_URL = process.env.IMPRINT_URL ?? "https://www.altiros.com/imprint";
+export const PRIVACY_URL = process.env.PRIVACY_URL ?? "https://www.altiros.com/privacy";
+
 const appUrl = new URL(APP_URL);
 export const PROTOCOL = appUrl.protocol;
 export const MAIN_HOST = appUrl.host;

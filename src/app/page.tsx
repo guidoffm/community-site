@@ -16,8 +16,8 @@ const FEATURES = [
   { icon: "🏡", title: "Homepage", text: "Deine eigene Seite mit Text und Galerie für deine Communities." },
 ];
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string; deleted?: string }> }) {
-  const { welcome, deleted } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string; deleted?: string; passwordReset?: string }> }) {
+  const { welcome, deleted, passwordReset } = await searchParams;
   const actor = await getActor();
   const all = await listCommunities(actor);
 
@@ -63,6 +63,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
 
   return (
     <div className="space-y-10">
+      {passwordReset && <p className="alert-success">🔑 Dein neues Passwort ist gespeichert – du bist angemeldet.</p>}
       {welcome && <p className="alert-success">🎉 Deine E-Mail-Adresse ist bestätigt – willkommen bei {APP_NAME}!</p>}
       <section className="relative isolate overflow-hidden rounded-3xl bg-gradient-brand p-6 text-white shadow-lg shadow-pop/20 sm:p-8">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_85%_15%,rgba(255,255,255,.35),transparent_40%)]" />

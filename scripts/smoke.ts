@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { and, eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
 import { DELETED_USER_ID } from "../src/db/schema";
-import { authenticate, deleteUnverifiedUsers, peekVerification, register, verifyEmail } from "../src/services/users";
+import { authenticate, changePassword, deleteUnverifiedUsers, peekPasswordReset, peekVerification, register, requestPasswordReset, resetPassword, verifyEmail } from "../src/services/users";
 import { createCommunity, getCommunity, joinCommunity, updateCommunity } from "../src/services/communities";
 import { createEvent, getEvent, setRegistration } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
@@ -151,6 +151,24 @@ await deleteImage(a, photo.id);
 ok((await eventPhotos(ev.id)).length === 0, "Organisator löscht Event-Foto");
 const pending = await db().select().from(t.storageDeletions);
 ok(pending.length === 0, "Speicherobjekte gelöscht (keine offenen Löschungen)");
+
+// --- Passwort zurücksetzen / ändern
+const none = await requestPasswordReset("gibt-es-nicht@example.org", `smoke-pw-${suffix}`);
+ok(!none.token, "Reset für unbekannte Adresse: keine Mail, gleiche Antwort");
+const pr = await requestPasswordReset(b.email, `smoke-pw-${suffix}`);
+ok(pr.token && (await peekPasswordReset(pr.token))?.email === b.email, "Reset-Link für bekanntes Konto");
+const prMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, b.email))).find((m) => m.subject.startsWith("Passwort zurücksetzen"));
+ok(prMail?.text.includes("/password/reset?token=") && prMail.text.includes("Impressum: ") && prMail.html?.includes("Datenschutz"), "Reset-Mail mit Link und Pflichtangaben");
+await resetPassword(pr.token!, "kurz").then(() => ok(false, "kurz"), () => ok(true, "zu kurzes Passwort abgelehnt"));
+await resetPassword(pr.token!, "neuesPasswort1");
+await authenticate(b.email, "neuesPasswort1", `smoke-pw-${suffix}`).then(() => ok(true, "Login mit neuem Passwort"));
+await authenticate(b.email, "geheim123", `smoke-pw2-${suffix}`).then(() => ok(false, "altes Passwort"), () => ok(true, "altes Passwort ungültig"));
+await resetPassword(pr.token!, "nochmal123").then(() => ok(false, "Link zweimal"), () => ok(true, "Reset-Link nur einmal verwendbar"));
+const bUser = await db().query.users.findFirst({ where: eq(t.users.id, b.userId) });
+ok(bUser?.passwordChangedAt, "ältere Sitzungen werden ungültig (passwordChangedAt)");
+await changePassword(b.userId, "falsch", "egal12345").then(() => ok(false, "falsch"), () => ok(true, "Passwort ändern mit falschem aktuellem Passwort abgelehnt"));
+await changePassword(b.userId, "neuesPasswort1", "geheim123");
+await authenticate(b.email, "geheim123", `smoke-pw3-${suffix}`).then(() => ok(true, "Passwort geändert"));
 
 // --- Erinnerungen
 const remEv = await createEvent(a, "ossis", { title: "Erinnerungstest", description: "x", location: "Leipzig", startsAt: local, endsAt: null });

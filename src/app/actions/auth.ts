@@ -4,7 +4,7 @@ import { clientIp } from "@/lib/auth/client-ip";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { safeRedirectTarget, siteUrl } from "@/lib/domains";
 import { run, type ActionState } from "@/lib/forms";
-import { authenticate, register as registerUser, verifyEmail } from "@/services/users";
+import { authenticate, changePassword as changePasswordService, register as registerUser, requestPasswordReset, resetPassword, verifyEmail } from "@/services/users";
 import { deleteAccount as deleteAccountService } from "@/services/account";
 import { requireActor } from "@/lib/auth/session";
 
@@ -55,5 +55,32 @@ export async function deleteAccount(_: ActionState, fd: FormData): Promise<Actio
     await deleteAccountService(actor, String(fd.get("password") ?? ""), await clientIp());
     await destroySession();
     redirect(siteUrl("/?deleted=1"));
+  });
+}
+
+export async function forgotPassword(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    await requestPasswordReset(String(fd.get("email") ?? ""), await clientIp());
+    // immer dieselbe Antwort – verrät nicht, ob es ein Konto gibt
+    return "Falls ein Konto mit dieser Adresse existiert, haben wir dir einen Link zum Zurücksetzen geschickt. Er ist eine Stunde gültig.";
+  });
+}
+
+export async function setNewPassword(token: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    if (fd.get("password") !== fd.get("password2")) return { error: "Die Passwörter stimmen nicht überein." };
+    const user = await resetPassword(token, fd.get("password"));
+    await createSession(user.id);
+    redirect(siteUrl("/?passwordReset=1"));
+  });
+}
+
+export async function changePassword(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const actor = await requireActor();
+    if (fd.get("password") !== fd.get("password2")) return { error: "Die neuen Passwörter stimmen nicht überein." };
+    await changePasswordService(actor.userId, String(fd.get("current") ?? ""), fd.get("password"));
+    await createSession(actor.userId); // diese Sitzung bleibt gültig, alle anderen nicht
+    return "Passwort geändert. Auf anderen Geräten musst du dich neu anmelden.";
   });
 }
