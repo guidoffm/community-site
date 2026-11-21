@@ -18,7 +18,7 @@ export function CommunityGrid({
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,.35),transparent_45%)]" />
                 {c.isMember && <span className="chip absolute right-3 top-3 bg-white/90 text-slate-700">Mitglied</span>}
               </div>
-              <div className="-mt-7 px-5 pb-5">
+              <div className="relative -mt-7 px-5 pb-5">
                 <CommunityLogo title={c.title} slug={c.slug} />
                 <h3 className="mt-2 text-lg font-bold group-hover:text-brand">{c.title}</h3>
                 <p className="text-xs font-medium text-slate-400">{communityUrl(c.slug).replace(/^https?:\/\//, "").replace(/\/$/, "")}</p>

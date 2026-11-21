@@ -36,7 +36,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
         <div className={`relative h-32 sm:h-40 ${col.gradient}`}>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,.4),transparent_40%),radial-gradient(circle_at_90%_90%,rgba(255,255,255,.25),transparent_35%)]" />
         </div>
-        <div className="-mt-10 flex flex-wrap items-end gap-4 px-5 pb-5 sm:px-6">
+        <div className="relative -mt-10 flex flex-wrap items-end gap-4 px-5 pb-5 sm:px-6">
           <CommunityLogo title={community.title} slug={slug} size="h-20 w-20 text-3xl" />
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl sm:text-4xl">{community.title}</h1>
