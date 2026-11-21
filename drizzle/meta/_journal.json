@@ -36,6 +36,13 @@
       "when": 1795218788303,
       "tag": "0004_site_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795220180222,
+      "tag": "0005_platzhalter_geloeschter_benutzer",
+      "breakpoints": true
     }
   ]
 }

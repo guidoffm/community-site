@@ -10,6 +10,11 @@ const timestamps = {
 };
 
 // ---------------------------------------------------------------- Benutzer
+/**
+ * Platzhalter-Konto „Gelöschter Benutzer“ (per Migration angelegt). Vergangene Events gelöschter Konten
+ * werden ihm zugeordnet, damit die Historie erhalten bleibt. Kein Login möglich, in keiner Community.
+ */
+export const DELETED_USER_ID = "00000000-0000-0000-0000-00000000dead";
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),

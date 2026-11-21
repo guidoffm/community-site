@@ -1,6 +1,7 @@
 // Konto löschen (Recht auf Löschung): entfernt alle Daten der Person.
-import { and, eq, gt, inArray, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
 import { db, t } from "@/db";
+import { DELETED_USER_ID } from "@/db/schema";
 import type { Actor } from "@/lib/auth/session";
 import { AppError, notFound } from "@/lib/errors";
 import { verifyPassword } from "@/lib/auth/password";
@@ -9,6 +10,7 @@ import { notifyAccountDeleted, notifyEventCancelled } from "./notifications";
 import { deleteScheduled, scheduleImageDeletion } from "./storage-cleanup";
 
 export async function deleteAccount(actor: Actor, password: string, ip: string) {
+  if (actor.userId === DELETED_USER_ID) throw new AppError("FORBIDDEN", "Dieses Konto kann nicht gelöscht werden.");
   const key = `delete-account:${actor.userId}`;
   const wait = await blockedFor([[key, 5]]);
   if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
@@ -39,15 +41,25 @@ export async function deleteAccount(actor: Actor, password: string, ip: string) 
       );
     }
 
-    // 2. Alle Bilder, die mit dem Konto verschwinden: eigene Uploads, Homepage, Fotos in eigenen Events
-    const ownEvents = tx.select({ id: t.events.id }).from(t.events).where(eq(t.events.organizerId, user.id));
+    // 2. Alle Bilder, die mit dem Konto verschwinden: eigene Uploads, Homepage, Fotos in anstehenden eigenen Events
+    //    (Fotos anderer in vergangenen Events bleiben – die Events bleiben ja erhalten)
+    const ownEvents = tx
+      .select({ id: t.events.id })
+      .from(t.events)
+      .where(and(eq(t.events.organizerId, user.id), gt(t.events.startsAt, new Date())));
     const imgs = await tx
       .select({ id: t.images.id })
       .from(t.images)
       .where(or(eq(t.images.uploaderId, user.id), eq(t.images.homepageUserId, user.id), inArray(t.images.eventId, ownEvents)));
     const keys = await scheduleImageDeletion(tx, imgs.map((i) => i.id));
 
-    // 3. Abschiedsmail, dann Konto löschen (Mitgliedschaften, Nachrichten, Events, Homepage per Cascade)
+    // 3. Vergangene Events bleiben als Historie erhalten und gehen an „Gelöschter Benutzer“
+    await tx
+      .update(t.events)
+      .set({ organizerId: DELETED_USER_ID })
+      .where(and(eq(t.events.organizerId, user.id), lte(t.events.startsAt, new Date())));
+
+    // 4. Abschiedsmail, dann Konto löschen (Mitgliedschaften, Nachrichten, anstehende Events, Homepage per Cascade)
     await notifyAccountDeleted(tx, { email: user.email, name: user.name });
     await tx.delete(t.users).where(eq(t.users.id, user.id));
     return keys;

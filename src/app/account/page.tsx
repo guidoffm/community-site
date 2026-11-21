@@ -25,9 +25,10 @@ export default async function AccountPage() {
         <div>
           <h2 className="text-rose-700">Konto löschen</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Dabei werden <strong>alle deine Daten endgültig gelöscht</strong>: Mitgliedschaften, gesendete Nachrichten, deine
-            Homepage, hochgeladene Bilder und von dir organisierte Events. Anstehende Events werden abgesagt und die angemeldeten
-            Teilnehmer per E-Mail informiert. Das lässt sich nicht rückgängig machen.
+            Dabei werden <strong>deine Daten endgültig gelöscht</strong>: Mitgliedschaften, gesendete Nachrichten, deine Homepage
+            und hochgeladene Bilder. Von dir organisierte <strong>anstehende</strong> Events werden abgesagt und die angemeldeten
+            Teilnehmer per E-Mail informiert. <strong>Vergangene</strong> Events bleiben für die Community erhalten – als
+            Organisator steht dann „Gelöschter Benutzer“. Das lässt sich nicht rückgängig machen.
           </p>
         </div>
         <ActionForm action={deleteAccount} className="space-y-3" confirm="Konto und alle Daten jetzt endgültig löschen?">

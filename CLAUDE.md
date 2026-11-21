@@ -12,6 +12,7 @@ Architektur wie `simple-erp` (Next.js standalone, Drizzle/pg, eigene Sessions, S
 - Schemaänderungen: `src/db/schema.ts` ändern → `npm run db:generate` → Migration einchecken. Nie Migrationen von Hand editieren (Ausnahme: Datenmigrationen per `drizzle-kit generate --custom`). Migrationen müssen **abwärtskompatibel** sein (Rolling Update, Expand/Contract).
 - Registrierung: Konto ist bis zur E-Mail-Bestätigung gesperrt (`users.email_verified_at`), Mitgliedschaften erst nach Bestätigung (`email_verifications.community_ids`). Bestätigung per POST-Button (`/verify`), nicht per GET – Mail-Scanner öffnen Links vorab. Job `unverified-cleanup` löscht nach 24 h.
 - Rollen: Site-Admin (`users.is_site_admin`) darf Communities anlegen; Vergabe nur über `SITE_ADMIN_EMAILS` (Cluster-ConfigMap, nicht im Code – keine personenbezogenen Daten im öffentlichen Repo). Community-Rollen `admin`/`member` in `memberships`.
+- Konto löschen (`src/services/account.ts`): vergangene Events gehen an das Platzhalter-Konto `DELETED_USER_ID` („Gelöschter Benutzer“, per Migration angelegt, kein Login) – nie löschen oder als echten Nutzer behandeln.
 - Mehrere Replikas: Start-Migration und Jobs über Advisory-Locks (`withAdvisoryLock`), Rate-Limits in `rate_limit_hits`.
 - Image nur `linux/arm64` mit lokalem Docker (`./docker-build.sh`). Deployment: `~/src/argocd/community-site`.
 - Tests: `npm run smoke` gegen die Dev-DB (`npm run dev:db`).

@@ -131,7 +131,7 @@ export async function notifyAccountDeleted(tx: Tx, user: Recipient) {
         html: layout(
           "Konto gelöscht",
           `<p>Hallo ${escapeHtml(user.name)},</p>
-           <p>dein Konto bei ${escapeHtml(APP_NAME)} und alle zugehörigen Daten (Mitgliedschaften, Nachrichten, Events, Homepage und Bilder) wurden gelöscht.</p>
+           <p>dein Konto bei ${escapeHtml(APP_NAME)} und deine Daten (Mitgliedschaften, Nachrichten, Homepage, Bilder und anstehende Events) wurden gelöscht. Vergangene Events, die du organisiert hast, bleiben ohne deinen Namen als „Gelöschter Benutzer“ erhalten.</p>
            <p>Schade, dass du gehst – du kannst dich jederzeit neu registrieren.</p>`,
           { label: "Zu " + APP_NAME, url: siteUrl("/") },
         ),

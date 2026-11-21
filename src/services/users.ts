@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db, t } from "@/db";
+import { DELETED_USER_ID } from "@/db/schema";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -112,7 +113,8 @@ export async function authenticate(emailRaw: string, password: string, ip: strin
   if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
 
   const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  const valid = !!user && user.id !== DELETED_USER_ID && user.passwordHash.startsWith("$2") && (await verifyPassword(password, user.passwordHash));
+  if (!user || !valid) {
     await recordFailure(...keys);
     throw new AppError("UNAUTHORIZED", "E-Mail oder Passwort ist falsch.");
   }
