@@ -77,11 +77,11 @@ export default async function CommunityPage({ params, searchParams }: { params: 
                 <span className="text-sm text-slate-500">Alle Mitglieder werden eingeladen</span>
               </span>
             </a>
-            <a href={here("/messages/new?to=all")} className="card card-hover flex items-center gap-4">
+            <a href={here("/messages/new")} className="card card-hover flex items-center gap-4">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-brand text-2xl text-white shadow-md">💬</span>
               <span>
-                <span className="block font-bold">Nachricht an alle</span>
-                <span className="text-sm text-slate-500">oder einzelne Mitglieder anschreiben</span>
+                <span className="block font-bold">Nachricht schreiben</span>
+                <span className="text-sm text-slate-500">an alle oder ausgewählte Mitglieder</span>
               </span>
             </a>
           </div>

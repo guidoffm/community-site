@@ -73,6 +73,15 @@ await joinCommunity(b, ossis.id);
 ok(true, "zwei bestätigte Nutzer, beide Mitglied bei Ossis");
 
 const before = (await db().select({ n: sql<number>`count(*)::int` }).from(t.mailOutbox)).at(0)!.n;
+const e = actor(await registerVerified("Emil Test", `emil-${suffix}@example.org`, [ossis.id]));
+const recipientsOf = async (id: string) =>
+  (await db().select({ u: t.messageRecipients.userId }).from(t.messageRecipients).where(eq(t.messageRecipients.messageId, id))).map((r) => r.u).sort();
+const multi = await sendMessage(a, "ossis", { subject: "Zwei", body: "An zwei", mode: "selected", recipientIds: [b.userId, e.userId] });
+ok(JSON.stringify(await recipientsOf(multi.id)) === JSON.stringify([b.userId, e.userId].sort()), "Nachricht an mehrere ausgewählte Mitglieder");
+const toAll = await sendMessage(a, "ossis", { subject: "Alle", body: "An alle", mode: "all", recipientIds: [] });
+const allR = await recipientsOf(toAll.id);
+ok(allR.includes(b.userId) && allR.includes(e.userId) && !allR.includes(a.userId), "Nachricht an alle Mitglieder (ohne Absender)");
+await sendMessage(a, "ossis", { subject: "Leer", body: "x", mode: "selected", recipientIds: [] }).then(() => ok(false, "leer"), () => ok(true, "Auswahl ohne Empfänger wird abgelehnt"));
 const msg = await sendMessage(a, "ossis", { subject: "Hallo", body: "Wie geht's?", mode: "selected", recipientIds: [b.userId] });
 ok((await unreadCount(b)) >= 1, "Nachricht kommt im Posteingang an (ungelesen)");
 const read = await readMessage(b, msg.id);

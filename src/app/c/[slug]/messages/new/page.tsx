@@ -17,10 +17,18 @@ export default async function NewMessagePage({ params, searchParams }: { params:
   return (
     <div className="card mx-auto max-w-2xl">
       <a href={communityUrl(slug)} className="link text-sm">← {community.title}</a>
-      <h1 className="mt-2">Neue Nachricht</h1>
-      <p className="mb-4 mt-1 text-sm text-slate-500">Die Empfänger werden zusätzlich per E-Mail benachrichtigt.</p>
+      <h1 className="mt-2">💬 Nachricht schreiben</h1>
+      <p className="mb-5 mt-1 text-sm text-slate-500">
+        An alle oder ausgewählte Mitglieder von {community.title}. Die Empfänger werden zusätzlich per E-Mail benachrichtigt.
+      </p>
       {members.length === 0 ? (
-        <p className="text-slate-500">Diese Community hat noch keine weiteren Mitglieder.</p>
+        <div className="rounded-2xl bg-brand-light/60 p-4 text-sm text-slate-700">
+          <p className="font-semibold">Du bist bisher das einzige Mitglied.</p>
+          <p className="mt-1">
+            Sobald weitere Mitglieder beigetreten sind, kannst du hier allen oder ausgewählten Mitgliedern schreiben. Teile dazu
+            einfach den Link <a href={communityUrl(slug)} className="link">{communityUrl(slug).replace(/^https?:\/\//, "").replace(/\/$/, "")}</a>.
+          </p>
+        </div>
       ) : (
         <ComposeForm action={sendMessage.bind(null, slug)} members={members.map((m) => ({ id: m.userId, name: m.name }))} preselected={to ?? null} />
       )}
