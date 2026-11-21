@@ -17,15 +17,25 @@ import { canViewHomepage } from "./homepages";
 import { eventHasStarted, isParticipant } from "./events";
 import { deleteScheduled, scheduleImageDeletion } from "./storage-cleanup";
 
-export type UploadTarget = { kind: "homepage" } | { kind: "event"; eventId: string };
+export type UploadTarget =
+  | { kind: "homepage" }
+  | { kind: "event"; eventId: string }
+  | { kind: "community-logo" | "community-cover"; communityId: string };
 
 /** Bilder hochladen. Jedes Bild erhält eine UUID (DB-ID und Teil des Objekt-Keys). */
 export async function uploadImages(actor: Actor, target: UploadTarget, files: File[], caption: string | null) {
   if (files.length === 0) throw new AppError("VALIDATION", "Keine Datei ausgewählt.");
 
-  let owner: { homepageUserId: string } | { eventId: string };
+  let owner: { homepageUserId: string } | { eventId: string } | { communityId: string };
   let remaining: number;
-  if (target.kind === "event") {
+  if (target.kind === "community-logo" || target.kind === "community-cover") {
+    const c = await db().query.communities.findFirst({ where: eq(t.communities.id, target.communityId) });
+    if (!c) throw notFound("Community");
+    const m = await db().query.memberships.findFirst({ where: and(eq(t.memberships.communityId, c.id), eq(t.memberships.userId, actor.userId)) });
+    if (!actor.isSiteAdmin && m?.role !== "admin") throw forbidden("Nur Admins dürfen Logo und Titelbild ändern.");
+    remaining = 1;
+    owner = { communityId: c.id };
+  } else if (target.kind === "event") {
     const event = await db().query.events.findFirst({ where: eq(t.events.id, target.eventId) });
     if (!event || !(await isParticipant(event, actor.userId))) throw forbidden("Nur Teilnehmer des Events können Fotos hochladen.");
     if (!eventHasStarted(event)) throw new AppError("CONFLICT", "Fotos können erst hochgeladen werden, wenn das Event stattgefunden hat.");
@@ -69,6 +79,7 @@ export async function uploadImages(actor: Actor, target: UploadTarget, files: Fi
         caption: caption?.trim().slice(0, 200) || null,
       });
       uploaded++;
+      if ("communityId" in owner) await setCommunityImage(owner.communityId, target.kind === "community-logo" ? "logo" : "cover", id);
     } catch (e) {
       console.error("[upload]", e);
       errors.push(`${file.name}: konnte nicht verarbeitet werden`);
@@ -107,6 +118,8 @@ export async function readImage(viewer: Actor | null, id: string, variant: Image
     const hp = await db().query.homepages.findFirst({ where: eq(t.homepages.userId, img.homepageUserId) });
     if (!hp || !(await canViewHomepage(hp, viewer?.userId ?? null))) throw notFound("Bild");
     isPublic = hp.visibility === "public";
+  } else if (img.communityId) {
+    isPublic = true; // Logo/Titelbild sind öffentlich wie die Community-Seite
   } else {
     const event = await db().query.events.findFirst({ where: eq(t.events.id, img.eventId!) });
     if (!event || !(await isParticipant(event, viewer?.userId ?? null))) throw notFound("Bild");
@@ -138,4 +151,16 @@ export async function removeImage(id: string) {
     return keys;
   });
   await deleteScheduled(keys);
+}
+
+/** Logo/Titelbild setzen und das vorherige Bild entfernen. */
+async function setCommunityImage(communityId: string, kind: "logo" | "cover", imageId: string) {
+  const c = await db().query.communities.findFirst({ where: eq(t.communities.id, communityId) });
+  if (!c) return;
+  const old = kind === "logo" ? c.logoImageId : c.coverImageId;
+  await db()
+    .update(t.communities)
+    .set(kind === "logo" ? { logoImageId: imageId, updatedAt: new Date() } : { coverImageId: imageId, updatedAt: new Date() })
+    .where(eq(t.communities.id, communityId));
+  if (old && old !== imageId) await removeImage(old).catch(() => null);
 }

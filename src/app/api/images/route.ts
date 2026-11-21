@@ -20,8 +20,14 @@ export async function POST(req: Request) {
   if (!actor) return Response.redirect(siteUrl(`/login?next=${encodeURIComponent(returnTo)}`), 303);
 
   const eventId = String(form.get("eventId") ?? "");
+  const kind = String(form.get("target") ?? "");
+  const communityId = String(form.get("communityId") ?? "");
   const target: UploadTarget =
-    form.get("target") === "event" && UUID_RE.test(eventId) ? { kind: "event", eventId } : { kind: "homepage" };
+    kind === "event" && UUID_RE.test(eventId)
+      ? { kind: "event", eventId }
+      : (kind === "community-logo" || kind === "community-cover") && UUID_RE.test(communityId)
+        ? { kind, communityId }
+        : { kind: "homepage" };
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   try {
     const r = await uploadImages(actor, target, files, String(form.get("caption") ?? "") || null);

@@ -28,7 +28,22 @@ export function Avatar({ name, id, size = "h-9 w-9 text-sm" }: { name: string; i
 }
 
 /** Quadratisches Community-Logo mit Initialen auf Verlauf. */
-export function CommunityLogo({ title, slug, size = "h-12 w-12 text-lg" }: { title: string; slug: string; size?: string }) {
+export function CommunityLogo({
+  title,
+  slug,
+  logoImageId,
+  size = "h-12 w-12 text-lg",
+}: {
+  title: string;
+  slug: string;
+  logoImageId?: string | null;
+  size?: string;
+}) {
+  if (logoImageId)
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={`/api/images/${logoImageId}?size=thumb`} alt={`Logo ${title}`} className={`shrink-0 rounded-2xl bg-white object-cover shadow-md ring-4 ring-white ${size}`} />
+    );
   return (
     <span className={`inline-flex shrink-0 items-center justify-center rounded-2xl font-display font-extrabold text-white shadow-md ring-4 ring-white ${size} ${communityColors(slug).gradient}`}>
       {initials(title)}

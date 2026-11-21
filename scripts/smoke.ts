@@ -6,9 +6,9 @@ import { db, t } from "../src/db";
 import { DELETED_USER_ID } from "../src/db/schema";
 import { authenticate, changePassword, deleteUnverifiedUsers, peekPasswordReset, peekVerification, register, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "../src/services/users";
 import { finishLogin, startLogin, startRegistration } from "../src/services/passkeys";
-import { createCommunity, getCommunity, joinCommunity, updateCommunity } from "../src/services/communities";
+import { acceptInvite, createCommunity, createInviteLink, decideJoinRequest, getCommunity, inviteByEmail, joinCommunity, listJoinRequests, membershipOf, peekInvite, removeMember, revokeInviteLinks, setMemberRole, updateCommunity } from "../src/services/communities";
 import { createEvent, getEvent, isParticipant, setRegistration, updateEvent } from "../src/services/events";
-import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
+import { deleteMessages, inbox, readMessage, replyToMessage, sendMessage, sent, unreadCount } from "../src/services/messages";
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
 import { saveHomepage, viewHomepage } from "../src/services/homepages";
 import { processOutbox } from "../src/services/outbox";
@@ -158,7 +158,7 @@ const pending = await db().select().from(t.storageDeletions);
 ok(pending.length === 0, "Speicherobjekte gelöscht (keine offenen Löschungen)");
 
 // --- Passwort zurücksetzen / ändern
-const none = await requestPasswordReset("gibt-es-nicht@example.org", `smoke-pw-${suffix}`);
+const none = await requestPasswordReset(`gibt-es-nicht-${suffix}@example.org`, `smoke-pw-${suffix}`);
 ok(!none.token, "Reset für unbekannte Adresse: keine Mail, gleiche Antwort");
 const pr = await requestPasswordReset(b.email, `smoke-pw-${suffix}`);
 ok(pr.token && (await peekPasswordReset(pr.token))?.email === b.email, "Reset-Link für bekanntes Konto");
@@ -180,7 +180,7 @@ const pwless = await register({ acceptTerms: true, ageConfirmed: true, name: "Pa
 const paula = actor((await verifyEmail(pwless.token)).user);
 ok(pwless.user.passwordHash === "!", "Registrierung ohne Passwort möglich");
 await authenticate(paula.email, "!", `smoke-pl-${suffix}`).then(() => ok(false, "kein Passwort"), () => ok(true, "ohne Passwort kein Passwort-Login"));
-ok(!(await requestLoginCode("unbekannt@example.org", `smoke-pl-${suffix}`)).code, "Code für unbekannte Adresse: keine Mail, gleiche Antwort");
+ok(!(await requestLoginCode(`unbekannt-${suffix}@example.org`, `smoke-pl-${suffix}`)).code, "Code für unbekannte Adresse: keine Mail, gleiche Antwort");
 const lc = await requestLoginCode(paula.email, `smoke-pl-${suffix}`);
 ok(lc.code && /^\d{6}$/.test(lc.code), "6-stelliger Code angefordert");
 const lcMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, paula.email))).find((m) => m.subject.includes("Anmeldecode"));
@@ -266,6 +266,58 @@ ok(chgIcs.includes(`UID:event-${capEv.id}@`) && chgIcs.includes("Leipzig\\, Mark
 ce = await getEvent(a, "ossis", capEv.id);
 ok(ce.waitlist.length === 0 && ce.registrations.some((r) => r.name === "Emil Test" && r.guests === 5), "Limit erhöht → Warteliste rückt nach");
 await db().delete(t.events).where(eq(t.events.id, capEv.id));
+
+// --- Community-Verwaltung: Beitrittsmodus, Anfragen, Einladungen, Rollen
+const sa = { ...a, isSiteAdmin: true };
+const club = await createCommunity(sa, { title: `Verein ${suffix}`, slug: `verein-${suffix}` });
+await updateCommunity(a, club.slug, { title: club.title, description: "Nur auf Anfrage", joinMode: "request" });
+ok((await joinCommunity(b, club.id, "Darf ich?")) === "requested" && !(await membershipOf(b.userId, club.id)), "Beitritt auf Anfrage: Anfrage statt Mitgliedschaft");
+ok((await mailsTo(a.email, `Beitrittsanfrage für Verein ${suffix}: Bernd Test`)) === 1, "Admins bekommen Mail zur Anfrage");
+ok((await listJoinRequests(a, club.slug))[0]?.message === "Darf ich?", "Admin sieht Anfrage mit Nachricht");
+await listJoinRequests(b, club.slug).then(() => ok(false, "Fremde"), () => ok(true, "Anfragen nur für Admins"));
+await decideJoinRequest(a, club.slug, b.userId, true);
+ok(!!(await membershipOf(b.userId, club.id)) && (await mailsTo(b.email, `Willkommen in Verein ${suffix}!`)) === 1, "Anfrage angenommen → Mitglied + Mail");
+await joinCommunity(c, club.id);
+await decideJoinRequest(a, club.slug, c.userId, false);
+ok(!(await membershipOf(c.userId, club.id)), "Anfrage abgelehnt → kein Mitglied");
+await updateCommunity(a, club.slug, { title: club.title, description: "", joinMode: "invite" });
+await joinCommunity(c, club.id).then(() => ok(false, "invite"), (err) => ok(/Einladung/.test(err.message), "Nur-mit-Einladung: direkter Beitritt abgelehnt"));
+const inv = await inviteByEmail(a, club.slug, `carla-${suffix}@example.org, kaputt`);
+ok(inv.sent === 1 && inv.invalid.includes("kaputt"), "Einladung per E-Mail (ungültige Adressen gemeldet)");
+ok((await peekInvite(inv.tokens[0]))?.slug === club.slug, "Einladungsseite erkennt Einladung");
+await acceptInvite(c, inv.tokens[0]);
+ok(!!(await membershipOf(c.userId, club.id)), "Einladung angenommen → Mitglied (trotz Nur-Einladung)");
+await acceptInvite(e, inv.tokens[0]).then(() => ok(false, "zweimal"), () => ok(true, "E-Mail-Einladung nur einmal nutzbar"));
+const link = await createInviteLink(a, club.slug);
+const linkToken = new URL(link).searchParams.get("token")!;
+await acceptInvite(anton, linkToken);
+await acceptInvite(berta, linkToken);
+ok(!!(await membershipOf(anton.userId, club.id)) && !!(await membershipOf(berta.userId, club.id)), "Einladungslink mehrfach nutzbar");
+await revokeInviteLinks(a, club.slug);
+await acceptInvite(e, linkToken).then(() => ok(false, "widerrufen"), () => ok(true, "widerrufener Link ungültig"));
+await setMemberRole(a, club.slug, a.userId, "member").then(() => ok(false, "letzter Admin"), (err) => ok(/mindestens einen Admin/.test(err.message), "letzter Admin kann nicht herabgestuft werden"));
+await setMemberRole(a, club.slug, b.userId, "admin");
+ok((await membershipOf(b.userId, club.id))?.role === "admin", "Mitglied zum Admin gemacht");
+await removeMember(b, club.slug, c.userId);
+ok(!(await membershipOf(c.userId, club.id)) && (await mailsTo(c.email, `Du bist nicht mehr Mitglied von Verein ${suffix}`)) === 1, "Admin entfernt Mitglied (mit Mail)");
+await removeMember(c, club.slug, b.userId).then(() => ok(false, "Fremde entfernen"), () => ok(true, "Nicht-Admins können niemanden entfernen"));
+// Registrierung mit Community „auf Anfrage“
+await updateCommunity(a, club.slug, { title: club.title, description: "", joinMode: "request" });
+const newbie = await register({ acceptTerms: true, ageConfirmed: true, name: "Nora Neu", email: `nora-${suffix}@example.org`, password: "geheim123", communityIds: [club.id, ossis.id] }, `smoke-n-${suffix}`);
+await verifyEmail(newbie.token);
+ok(!!(await membershipOf(newbie.user.id, ossis.id)) && !(await membershipOf(newbie.user.id, club.id)) && (await listJoinRequests(a, club.slug)).some((r) => r.name === "Nora Neu"), "Registrierung: offene Community beigetreten, Anfrage-Community angefragt");
+await db().delete(t.communities).where(eq(t.communities.id, club.id));
+
+// --- Nachrichten löschen
+const dm = await sendMessage(a, "ossis", { subject: "Löschtest", body: "x", mode: "selected", recipientIds: [b.userId, e.userId] });
+await deleteMessages(b, [dm.id]);
+ok(!(await inbox(b)).some((m) => m.id === dm.id) && (await sent(a)).some((m) => m.id === dm.id), "Empfänger löscht: weg aus seinem Posteingang, Absender behält Kopie");
+await readMessage(b, dm.id).then(() => ok(false, "gelöscht lesen"), () => ok(true, "gelöschte Nachricht nicht mehr lesbar"));
+await deleteMessages(a, [dm.id]);
+ok(!(await sent(a)).some((m) => m.id === dm.id) && !!(await db().query.messages.findFirst({ where: eq(t.messages.id, dm.id) })), "Absender löscht: weg aus Gesendet, Emil hat noch Kopie");
+await deleteMessages(e, [dm.id]);
+ok(!(await db().query.messages.findFirst({ where: eq(t.messages.id, dm.id) })), "alle haben gelöscht → Nachricht endgültig entfernt");
+ok((await deleteMessages(c, [dm.id, "kein-uuid"])) === 0, "fremde/ungültige IDs werden ignoriert");
 
 // --- Nutzungsbedingungen & Meldeverfahren (DSA)
 await register({ name: "Ohne Zustimmung", email: `nozust-${suffix}@example.org`, password: "geheim123" }, `smoke-t-${suffix}`).then(() => ok(false, "ohne AGB"), (e) => ok(/Nutzungsbedingungen/.test(e.message), "Registrierung ohne Zustimmung abgelehnt"));

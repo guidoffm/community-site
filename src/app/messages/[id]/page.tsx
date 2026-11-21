@@ -5,7 +5,7 @@ import { formatShort } from "@/lib/dates";
 import { orNotFound } from "@/lib/errors";
 import { UUID_RE } from "@/lib/utils";
 import { readMessage } from "@/services/messages";
-import { replyToMessage } from "@/app/actions/messages";
+import { deleteMessages, replyToMessage } from "@/app/actions/messages";
 import { ActionForm, Submit } from "@/components/form";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,14 @@ export default async function MessagePage({ params, searchParams }: { params: Pr
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <a href={msg.isSender && !msg.isRecipient ? "/messages?box=sent" : "/messages"} className="link text-sm">← Nachrichten</a>
+      <div className="flex items-center justify-between">
+        <a href={msg.isSender && !msg.isRecipient ? "/messages?box=sent" : "/messages"} className="link text-sm">← Nachrichten</a>
+        <form action={deleteMessages}>
+          <input type="hidden" name="ids" value={msg.id} />
+          <input type="hidden" name="back" value={msg.isSender && !msg.isRecipient ? "/messages?box=sent" : "/messages"} />
+          <button className="btn-secondary px-3 py-1.5" data-confirm="Nachricht löschen?">🗑️ Löschen</button>
+        </form>
+      </div>
       {sent && <p className="alert-success">Nachricht gesendet. Die Empfänger werden per E-Mail benachrichtigt.</p>}
 
       <article className="card space-y-4">

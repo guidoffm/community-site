@@ -1,5 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/auth/session";
 import { siteUrl } from "@/lib/domains";
 import { run, type ActionState } from "@/lib/forms";
@@ -24,4 +25,13 @@ export async function replyToMessage(messageId: string, _: ActionState, fd: Form
     const msg = await messages.replyToMessage(actor, messageId, { body: fd.get("body"), replyAll: fd.get("replyAll") === "on" });
     redirect(siteUrl(`/messages/${msg.id}?sent=1`));
   });
+}
+
+export async function deleteMessages(fd: FormData) {
+  const actor = await requireActor();
+  await messages.deleteMessages(actor, fd.getAll("ids").map(String));
+  revalidatePath("/messages");
+  revalidatePath("/", "layout");
+  const back = fd.get("back");
+  if (typeof back === "string" && back.startsWith("/messages")) redirect(siteUrl(back));
 }

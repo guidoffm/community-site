@@ -1,6 +1,7 @@
 import { requireActor } from "@/lib/auth/session";
 import { formatShort } from "@/lib/dates";
 import { inbox, sent } from "@/services/messages";
+import { MessageList } from "./message-list";
 
 export const metadata = { title: "Nachrichten" };
 export const dynamic = "force-dynamic";
@@ -30,17 +31,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
       {rows.length === 0 ? (
         <p className="card text-slate-500">Keine Nachrichten.</p>
       ) : (
-        <ul className="list">
-          {rows.map((r) => (
-            <li key={r.id}>
-              <a href={`/messages/${r.id}`} className={`grid gap-x-4 px-5 py-3 hover:bg-violet-50/60 sm:grid-cols-[12rem_1fr_auto] ${r.unread ? "font-semibold" : ""}`}>
-                <span className="truncate">{r.unread && <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-pop" />}{r.who}</span>
-                <span className="truncate">{r.subject} <span className="font-normal text-slate-400">· {r.community}</span></span>
-                <span className="text-sm font-normal text-slate-500">{formatShort(r.date)}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
+        <MessageList rows={rows.map((r) => ({ ...r, date: formatShort(r.date) }))} back={isSent ? "/messages?box=sent" : "/messages"} />
       )}
     </div>
   );

@@ -2,7 +2,7 @@ import { getActor } from "@/lib/auth/session";
 import { communityUrl } from "@/lib/domains";
 import { communityColors } from "@/lib/colors";
 import { listCommunities } from "@/services/communities";
-import { joinCommunity, leaveCommunity } from "@/app/actions/communities";
+import { JoinButton } from "@/components/join-button";
 import { CommunityLogo } from "@/components/decor";
 
 export const metadata = { title: "Communities", alternates: { canonical: "/communities" } };
@@ -32,7 +32,7 @@ export default async function CommunitiesPage() {
               <span className={`absolute inset-y-0 left-0 w-1.5 ${col.gradient}`} />
               <div className="flex flex-wrap items-start gap-4">
                 <a href={communityUrl(c.slug)} aria-hidden tabIndex={-1}>
-                  <CommunityLogo title={c.title} slug={c.slug} size="h-14 w-14 text-xl" />
+                  <CommunityLogo title={c.title} slug={c.slug} logoImageId={c.logoImageId} size="h-14 w-14 text-xl" />
                 </a>
                 <div className="min-w-0 flex-1">
                   <a href={communityUrl(c.slug)} className="font-display text-xl font-extrabold text-slate-900 underline-offset-4 hover:text-brand hover:underline">
@@ -50,14 +50,9 @@ export default async function CommunitiesPage() {
                 <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                   <a href={communityUrl(c.slug)} className="btn-secondary">Ansehen →</a>
                   {actor ? (
-                    <form action={c.isMember ? leaveCommunity : joinCommunity}>
-                      <input type="hidden" name="communityId" value={c.id} />
-                      <button className={c.isMember ? "btn-secondary" : "btn"} data-confirm={c.isMember ? `„${c.title}“ wirklich verlassen?` : undefined}>
-                        {c.isMember ? "Austreten" : "Beitreten"}
-                      </button>
-                    </form>
+                    <JoinButton community={c} isMember={c.isMember} hasRequested={c.hasRequested} />
                   ) : (
-                    <a href={`/register?community=${c.slug}`} className="btn">Registrieren & beitreten</a>
+                    c.joinMode !== "invite" && <a href={`/register?community=${c.slug}`} className="btn">Registrieren & beitreten</a>
                   )}
                 </div>
               </div>

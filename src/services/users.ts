@@ -9,6 +9,7 @@ import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { blockedFor, clearFailures, recordFailure } from "@/lib/auth/rate-limit";
 import { notifyEmailVerification, notifyLoginCode, notifyPasswordReset } from "./notifications";
+import { requestJoin } from "./communities";
 
 /** Frist für die Bestätigung der E-Mail-Adresse; danach löscht der Job unverified-cleanup das Konto. */
 export const VERIFICATION_TTL_MS = 24 * 3_600_000;
@@ -100,11 +101,16 @@ export async function verifyEmail(token: string) {
       .set({ emailVerifiedAt: new Date(), ...(env.siteAdminEmails().includes(current.email) ? { isSiteAdmin: true } : {}) })
       .where(eq(t.users.id, v.userId))
       .returning();
-    if (v.communityIds.length) {
-      const cs = await tx.select({ id: t.communities.id }).from(t.communities).where(inArray(t.communities.id, v.communityIds));
-      if (cs.length) await tx.insert(t.memberships).values(cs.map((c) => ({ communityId: c.id, userId: user.id }))).onConflictDoNothing();
-    }
-    return { user, next: v.next };
+    const cs = v.communityIds.length
+      ? await tx.select().from(t.communities).where(inArray(t.communities.id, v.communityIds))
+      : [];
+    const open = cs.filter((c) => c.joinMode === "open");
+    if (open.length) await tx.insert(t.memberships).values(open.map((c) => ({ communityId: c.id, userId: user.id }))).onConflictDoNothing();
+    return { user, next: v.next, requestCommunities: cs.filter((c) => c.joinMode === "request") };
+  }).then(async (r) => {
+    // Communities „auf Anfrage“: Anfrage stellen (nach dem Commit, eigene Transaktion je Anfrage)
+    for (const c of r.requestCommunities) await requestJoin(c, { id: r.user.id, name: r.user.name }, null);
+    return { user: r.user, next: r.next };
   });
 }
 

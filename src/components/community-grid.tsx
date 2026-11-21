@@ -5,7 +5,7 @@ import { CommunityLogo } from "./decor";
 export function CommunityGrid({
   communities,
 }: {
-  communities: { id: string; slug: string; title: string; description: string; memberCount: number; isMember?: boolean }[];
+  communities: { id: string; slug: string; title: string; description: string; memberCount: number; isMember?: boolean; logoImageId?: string | null }[];
 }) {
   return (
     <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -19,7 +19,7 @@ export function CommunityGrid({
                 {c.isMember && <span className="chip absolute right-3 top-3 bg-white/90 text-slate-700">Mitglied</span>}
               </div>
               <div className="relative -mt-7 px-5 pb-5">
-                <CommunityLogo title={c.title} slug={c.slug} />
+                <CommunityLogo title={c.title} slug={c.slug} logoImageId={c.logoImageId} />
                 <h3 className="mt-2 text-lg font-bold group-hover:text-brand">{c.title}</h3>
                 <p className="text-xs font-medium text-slate-400">{communityUrl(c.slug).replace(/^https?:\/\//, "").replace(/\/$/, "")}</p>
                 {c.description && <p className="mt-2 line-clamp-3 text-sm text-slate-600">{c.description}</p>}

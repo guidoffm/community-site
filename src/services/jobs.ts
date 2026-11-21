@@ -26,9 +26,14 @@ export const jobs: Record<string, JobDef> = {
         .where(and(inArray(t.mailOutbox.status, ["sent", "failed"]), lt(t.mailOutbox.createdAt, new Date(Date.now() - 30 * day))))
         .returning({ id: t.mailOutbox.id });
       const runs = await db().delete(t.jobRuns).where(lt(t.jobRuns.startedAt, new Date(Date.now() - 90 * day))).returning({ id: t.jobRuns.id });
+      // abgelaufene, benutzte oder widerrufene Einladungen (enthalten E-Mail-Adressen Dritter) nach 30 Tagen löschen
+      const invites = await db()
+        .delete(t.communityInvites)
+        .where(sql`${t.communityInvites.expiresAt} < now() - interval '30 days' or ${t.communityInvites.usedAt} < now() - interval '30 days' or ${t.communityInvites.revokedAt} < now() - interval '30 days'`)
+        .returning({ id: t.communityInvites.id });
       // entschiedene Meldungen (DSA) nach einem Jahr löschen
       const reports = await db().delete(t.reports).where(and(sql`${t.reports.status} <> 'open'`, lt(t.reports.decidedAt, new Date(Date.now() - 365 * day)))).returning({ id: t.reports.id });
-      return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, reportsDeleted: reports.length, rateLimitHits: await purgeRateLimits() };
+      return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, reportsDeleted: reports.length, invitesDeleted: invites.length, rateLimitHits: await purgeRateLimits() };
     },
   },
   "event-reminders": {

@@ -4,9 +4,11 @@ import { communityUrl, siteUrl } from "@/lib/domains";
 import { formatShort } from "@/lib/dates";
 import { orNotFound } from "@/lib/errors";
 import { communityColors } from "@/lib/colors";
+import { db, t } from "@/db";
+import { and, eq } from "drizzle-orm";
 import { canManage, getCommunity, listMembers, memberCount, membershipOf } from "@/services/communities";
 import { listEvents } from "@/services/events";
-import { joinCommunity, leaveCommunity } from "@/app/actions/communities";
+import { JoinButton } from "@/components/join-button";
 import { Avatar, CommunityLogo, DateBadge } from "@/components/decor";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +25,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ saved?: string }> }) {
+export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ saved?: string; joined?: string }> }) {
   const { slug } = await params;
-  const { saved } = await searchParams;
+  const { saved, joined } = await searchParams;
   const community = await orNotFound(getCommunity(slug));
   const actor = await getActor();
   const membership = actor ? await membershipOf(actor.userId, community.id) : null;
   const isMember = !!membership;
   const mayManage = canManage(actor, membership);
+  const hasRequested = !!actor && !isMember && !!(await db().query.joinRequests.findFirst({ where: and(eq(t.joinRequests.communityId, community.id), eq(t.joinRequests.userId, actor.userId)) }));
   const count = await memberCount(community.id);
   const [members, events] = isMember ? await Promise.all([listMembers(community.id), listEvents(actor!, slug)]) : [[], null];
   const here = (p: string) => communityUrl(slug, p);
@@ -39,12 +42,16 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   return (
     <div className="space-y-8">
       {saved && <p className="alert-success">✓ Änderungen gespeichert.</p>}
+      {joined && <p className="alert-success">🎉 Willkommen – du bist jetzt Mitglied!</p>}
       <header className="card overflow-hidden p-0">
-        <div className={`relative h-32 sm:h-40 ${col.gradient}`}>
+        <div
+          className={`relative h-32 bg-cover bg-center sm:h-48 ${community.coverImageId ? "" : col.gradient}`}
+          style={community.coverImageId ? { backgroundImage: `url(/api/images/${community.coverImageId})` } : undefined}
+        >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,.4),transparent_40%),radial-gradient(circle_at_90%_90%,rgba(255,255,255,.25),transparent_35%)]" />
         </div>
         <div className="relative -mt-10 flex flex-wrap items-end gap-4 px-5 pb-5 sm:px-6">
-          <CommunityLogo title={community.title} slug={slug} size="h-20 w-20 text-3xl" />
+          <CommunityLogo title={community.title} slug={slug} logoImageId={community.logoImageId} size="h-20 w-20 text-3xl" />
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl sm:text-4xl">{community.title}</h1>
             <p className="text-sm text-slate-500">
@@ -55,12 +62,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
           <div className="flex flex-wrap gap-2">
             {mayManage && <a href={here("/settings")} className="btn-secondary">✏️ Bearbeiten</a>}
             {actor ? (
-              <form action={isMember ? leaveCommunity : joinCommunity}>
-                <input type="hidden" name="communityId" value={community.id} />
-                <button className={isMember ? "btn-secondary" : "btn"} data-confirm={isMember ? `„${community.title}“ wirklich verlassen?` : undefined}>
-                  {isMember ? "Austreten" : "Beitreten"}
-                </button>
-              </form>
+              <JoinButton community={community} isMember={isMember} hasRequested={hasRequested} />
             ) : (
               <>
                 <a href={siteUrl(`/register?community=${slug}&next=${encodeURIComponent(here("/"))}`)} className="btn">Registrieren & beitreten</a>
@@ -76,7 +78,9 @@ export default async function CommunityPage({ params, searchParams }: { params: 
       </header>
 
       {!isMember || !events ? (
-        <p className="card text-center text-slate-600">🔒 Tritt der Community bei, um Mitglieder, Events und Nachrichten zu sehen.</p>
+        <p className="card text-center text-slate-600">
+          🔒 {community.joinMode === "invite" ? "Diese Community ist nur mit Einladung zugänglich." : "Tritt der Community bei, um Mitglieder, Events und Nachrichten zu sehen."}
+        </p>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">

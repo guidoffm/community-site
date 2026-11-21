@@ -117,8 +117,44 @@ export const communities = pgTable("communities", {
   slug: text("slug").notNull().unique(),
   description: text("description").notNull().default(""),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /** open = jeder kann beitreten | request = auf Anfrage (Admin entscheidet) | invite = nur mit Einladung */
+  joinMode: text("join_mode").notNull().default("open"),
+  /** Logo und Titelbild (Bilder mit community_id) */
+  logoImageId: uuid("logo_image_id"),
+  coverImageId: uuid("cover_image_id"),
   ...timestamps,
 });
+
+/** Beitrittsanfragen (joinMode = request) */
+export const joinRequests = pgTable(
+  "join_requests",
+  {
+    communityId: uuid("community_id").notNull().references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    message: text("message"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.userId] })],
+);
+
+/** Einladungen: per E-Mail (einmalig) oder als teilbarer Link. Gespeichert wird nur der Hash des Tokens. */
+export const communityInvites = pgTable(
+  "community_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id").notNull().references(() => communities.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** email | link */
+    kind: text("kind").notNull(),
+    email: text("email"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: ts("expires_at").notNull(),
+    usedAt: ts("used_at"),
+    revokedAt: ts("revoked_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("community_invites_community_idx").on(t.communityId)],
+);
 
 export const memberships = pgTable(
   "memberships",
@@ -141,6 +177,8 @@ export const messages = pgTable(
     subject: text("subject").notNull(),
     body: text("body").notNull(),
     parentId: uuid("parent_id").references((): any => messages.id, { onDelete: "set null" }), // eslint-disable-line @typescript-eslint/no-explicit-any
+    /** Absender hat die Nachricht aus „Gesendet“ gelöscht */
+    senderDeletedAt: ts("sender_deleted_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("messages_sender_idx").on(t.senderId, t.createdAt)],
@@ -152,6 +190,8 @@ export const messageRecipients = pgTable(
     messageId: uuid("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     readAt: ts("read_at"),
+    /** Empfänger hat die Nachricht aus dem Posteingang gelöscht */
+    deletedAt: ts("deleted_at"),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.userId] }), index("message_recipients_user_idx").on(t.userId, t.readAt)],
 );
@@ -231,6 +271,8 @@ export const images = pgTable(
     uploaderId: uuid("uploader_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     homepageUserId: uuid("homepage_user_id").references(() => homepages.userId, { onDelete: "cascade" }),
     eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    /** Logo/Titelbild einer Community */
+    communityId: uuid("community_id").references(() => communities.id, { onDelete: "cascade" }),
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),
     width: integer("width").notNull(),
@@ -241,7 +283,7 @@ export const images = pgTable(
   (t) => [
     index("images_homepage_idx").on(t.homepageUserId, t.createdAt),
     index("images_event_idx").on(t.eventId, t.createdAt),
-    check("images_owner_chk", sql`num_nonnulls(${t.homepageUserId}, ${t.eventId}) = 1`),
+    check("images_owner_chk", sql`num_nonnulls(${t.homepageUserId}, ${t.eventId}, ${t.communityId}) = 1`),
   ],
 );
 

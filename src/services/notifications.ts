@@ -447,3 +447,71 @@ export const reportMails = {
     ];
   },
 };
+
+// ---------------------------------------------------------------- Community-Verwaltung
+type C = { title: string; slug: string };
+export const communityMails = {
+  joinRequested(admins: Recipient[], c: C, name: string, message: string | null): OutgoingMail[] {
+    const url = communityUrl(c.slug, "/settings");
+    return admins.map((a) => ({
+      to: { email: a.email, name: a.name },
+      subject: `Beitrittsanfrage für ${c.title}: ${name}`,
+      text: `Hallo ${a.name},\n\n${name} möchte der Community „${c.title}“ beitreten.${message ? `\n\nNachricht: ${message}` : ""}\n\nAnnehmen oder ablehnen: ${url}\n`,
+      html: layout(
+        "🙋 Neue Beitrittsanfrage",
+        `<p><strong>${escapeHtml(name)}</strong> möchte der Community <strong>${escapeHtml(c.title)}</strong> beitreten.</p>
+         ${message ? `<p style="background:#f1f5f9;padding:12px 16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(message)}</p>` : ""}`,
+        { label: "Anfrage ansehen", url },
+      ),
+    }));
+  },
+  joinDecided(u: Recipient, c: C, approved: boolean): OutgoingMail[] {
+    const url = communityUrl(c.slug);
+    return [
+      {
+        to: { email: u.email, name: u.name },
+        subject: approved ? `Willkommen in ${c.title}!` : `Deine Beitrittsanfrage für ${c.title}`,
+        text: approved
+          ? `Hallo ${u.name},\n\ndeine Beitrittsanfrage wurde angenommen – du bist jetzt Mitglied von „${c.title}“.\n\n${url}\n`
+          : `Hallo ${u.name},\n\ndeine Beitrittsanfrage für „${c.title}“ wurde leider abgelehnt.\n`,
+        html: layout(
+          approved ? `🎉 Willkommen in ${c.title}!` : "Beitrittsanfrage abgelehnt",
+          approved
+            ? `<p>Hallo ${escapeHtml(u.name)}, deine Beitrittsanfrage wurde angenommen – du bist jetzt Mitglied.</p>`
+            : `<p>Hallo ${escapeHtml(u.name)}, deine Beitrittsanfrage für <strong>${escapeHtml(c.title)}</strong> wurde leider abgelehnt.</p>`,
+          { label: approved ? "Zur Community" : `Zu ${APP_NAME}`, url: approved ? url : siteUrl("/communities") },
+        ),
+      },
+    ];
+  },
+  removed(u: Recipient, c: C): OutgoingMail[] {
+    return [
+      {
+        to: { email: u.email, name: u.name },
+        subject: `Du bist nicht mehr Mitglied von ${c.title}`,
+        text: `Hallo ${u.name},\n\nein Admin hat dich aus der Community „${c.title}“ entfernt. Bei Fragen wende dich an die Admins der Community.\n`,
+        html: layout(
+          `Nicht mehr Mitglied von ${c.title}`,
+          `<p>Hallo ${escapeHtml(u.name)}, ein Admin hat dich aus der Community <strong>${escapeHtml(c.title)}</strong> entfernt.</p>`,
+          { label: `Zu ${APP_NAME}`, url: siteUrl("/communities") },
+        ),
+      },
+    ];
+  },
+  invite(to: Recipient, c: C & { description: string }, inviterName: string, url: string): OutgoingMail[] {
+    return [
+      {
+        to: { email: to.email },
+        subject: `${inviterName} lädt dich in die Community ${c.title} ein`,
+        text: `Hallo,\n\n${inviterName} lädt dich ein, der Community „${c.title}“ auf ${APP_NAME} beizutreten.\n\n${teaser(c.description, 300)}\n\nEinladung annehmen (14 Tage gültig): ${url}\n\nFalls du die Person nicht kennst, ignoriere diese E-Mail einfach.\n`,
+        html: layout(
+          `Einladung: ${c.title}`,
+          `<p><strong>${escapeHtml(inviterName)}</strong> lädt dich ein, der Community <strong>${escapeHtml(c.title)}</strong> auf ${escapeHtml(APP_NAME)} beizutreten.</p>
+           ${c.description ? `<p style="color:#475569">${escapeHtml(teaser(c.description, 300))}</p>` : ""}
+           <p style="color:#64748b;font-size:14px">Die Einladung ist 14 Tage gültig. Falls du die Person nicht kennst, ignoriere diese E-Mail einfach.</p>`,
+          { label: "Einladung annehmen", url },
+        ),
+      },
+    ];
+  },
+};

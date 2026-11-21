@@ -11,7 +11,7 @@ export const metadata = { title: "Registrieren", alternates: { canonical: "/regi
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ community?: string; next?: string }> }) {
   if (await getActor()) redirect("/");
   const { community, next } = await searchParams;
-  const communities = await listCommunities(null);
+  const communities = (await listCommunities(null)).filter((c) => c.joinMode !== "invite");
 
   return (
     <div className="card mx-auto max-w-lg">
@@ -46,6 +46,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
                   <input type="checkbox" name="communityIds" value={c.id} defaultChecked={c.slug === community} className="mt-0.5" />
                   <span>
                     <span className="font-medium">{c.title}</span>
+                    {c.joinMode === "request" && <span className="ml-1 text-xs text-amber-700">(Beitritt auf Anfrage)</span>}
                     {c.description && <span className="block text-slate-500">{c.description.slice(0, 120)}</span>}
                   </span>
                 </label>

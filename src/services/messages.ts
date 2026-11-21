@@ -89,7 +89,7 @@ export async function inbox(actor: Actor) {
     .innerJoin(t.messages, eq(t.messages.id, t.messageRecipients.messageId))
     .innerJoin(t.users, eq(t.users.id, t.messages.senderId))
     .innerJoin(t.communities, eq(t.communities.id, t.messages.communityId))
-    .where(eq(t.messageRecipients.userId, actor.userId))
+    .where(and(eq(t.messageRecipients.userId, actor.userId), isNull(t.messageRecipients.deletedAt)))
     .orderBy(desc(t.messages.createdAt))
     .limit(100);
 }
@@ -106,7 +106,7 @@ export async function sent(actor: Actor) {
     })
     .from(t.messages)
     .innerJoin(t.communities, eq(t.communities.id, t.messages.communityId))
-    .where(eq(t.messages.senderId, actor.userId))
+    .where(and(eq(t.messages.senderId, actor.userId), isNull(t.messages.senderDeletedAt)))
     .orderBy(desc(t.messages.createdAt))
     .limit(100);
 }
@@ -115,22 +115,51 @@ export async function unreadCount(actor: Actor) {
   const [r] = await db()
     .select({ n: count() })
     .from(t.messageRecipients)
-    .where(and(eq(t.messageRecipients.userId, actor.userId), isNull(t.messageRecipients.readAt)));
+    .where(and(eq(t.messageRecipients.userId, actor.userId), isNull(t.messageRecipients.readAt), isNull(t.messageRecipients.deletedAt)));
   return r.n;
 }
 
-async function canSee(actor: Actor, messageId: string, senderId: string) {
-  if (senderId === actor.userId) return true;
+async function canSee(actor: Actor, messageId: string, senderId: string, senderDeletedAt?: Date | null) {
+  if (senderId === actor.userId && !senderDeletedAt) return true;
   const r = await db().query.messageRecipients.findFirst({
-    where: and(eq(t.messageRecipients.messageId, messageId), eq(t.messageRecipients.userId, actor.userId)),
+    where: and(eq(t.messageRecipients.messageId, messageId), eq(t.messageRecipients.userId, actor.userId), isNull(t.messageRecipients.deletedAt)),
   });
   return !!r;
+}
+
+/**
+ * Nachrichten löschen – wie bei E-Mail löscht jede Seite ihre eigene Kopie: Empfänger aus dem Posteingang,
+ * Absender aus „Gesendet“. Haben alle gelöscht, wird die Nachricht endgültig entfernt.
+ */
+export async function deleteMessages(actor: Actor, ids: string[]) {
+  const valid = ids.filter((id) => /^[0-9a-f-]{36}$/.test(id)).slice(0, 500);
+  if (!valid.length) return 0;
+  const now = new Date();
+  return db().transaction(async (tx) => {
+    const r = await tx
+      .update(t.messageRecipients)
+      .set({ deletedAt: now })
+      .where(and(inArray(t.messageRecipients.messageId, valid), eq(t.messageRecipients.userId, actor.userId), isNull(t.messageRecipients.deletedAt)))
+      .returning({ id: t.messageRecipients.messageId });
+    const s = await tx
+      .update(t.messages)
+      .set({ senderDeletedAt: now })
+      .where(and(inArray(t.messages.id, valid), eq(t.messages.senderId, actor.userId), isNull(t.messages.senderDeletedAt)))
+      .returning({ id: t.messages.id });
+    // endgültig entfernen, wenn niemand mehr eine Kopie hat
+    await tx.execute(sql`
+      delete from messages m
+      where m.id in (${sql.join(valid.map((v) => sql`${v}::uuid`), sql`, `)})
+        and m.sender_deleted_at is not null
+        and not exists (select 1 from message_recipients r where r.message_id = m.id and r.deleted_at is null)`);
+    return new Set([...r, ...s].map((x) => x.id)).size;
+  });
 }
 
 /** Nachricht lesen (markiert sie als gelesen). */
 export async function readMessage(actor: Actor, messageId: string) {
   const msg = await db().query.messages.findFirst({ where: eq(t.messages.id, messageId) });
-  if (!msg || !(await canSee(actor, msg.id, msg.senderId))) throw notFound("Nachricht");
+  if (!msg || !(await canSee(actor, msg.id, msg.senderId, msg.senderDeletedAt))) throw notFound("Nachricht");
 
   await db()
     .update(t.messageRecipients)
@@ -150,7 +179,7 @@ export async function readMessage(actor: Actor, messageId: string) {
   let parent: { id: string; subject: string; body: string; senderName: string } | null = null;
   if (msg.parentId) {
     const p = await db().query.messages.findFirst({ where: eq(t.messages.id, msg.parentId) });
-    if (p && (await canSee(actor, p.id, p.senderId))) {
+    if (p && (await canSee(actor, p.id, p.senderId, p.senderDeletedAt))) {
       const ps = await db().query.users.findFirst({ where: eq(t.users.id, p.senderId), columns: { name: true } });
       parent = { id: p.id, subject: p.subject, body: p.body, senderName: ps?.name ?? "?" };
     }

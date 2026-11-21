@@ -85,6 +85,20 @@
       "when": 1795255764252,
       "tag": "0011_event_capacity_waitlist",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795256122436,
+      "tag": "0012_community_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795256303581,
+      "tag": "0013_message_deletion",
+      "breakpoints": true
     }
   ]
 }
