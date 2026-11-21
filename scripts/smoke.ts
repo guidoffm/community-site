@@ -10,6 +10,7 @@ import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "..
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
 import { saveHomepage, viewHomepage } from "../src/services/homepages";
 import { processOutbox } from "../src/services/outbox";
+import { deleteAccount } from "../src/services/account";
 import type { Actor } from "../src/lib/auth/session";
 
 const ok = (cond: unknown, msg: string) => {
@@ -135,6 +136,25 @@ await deleteImage(a, photo.id);
 ok((await eventPhotos(ev.id)).length === 0, "Organisator löscht Event-Foto");
 const pending = await db().select().from(t.storageDeletions);
 ok(pending.length === 0, "Speicherobjekte gelöscht (keine offenen Löschungen)");
+
+// --- Konto löschen
+const del = actor(await registerVerified("Gustav Weg", `gustav-${suffix}@example.org`, [ossis.id]));
+await saveHomepage(del, { title: "Gustavs Seite", content: "", visibility: "public" });
+await uploadImages(del, { kind: "homepage" }, [file], null);
+const pastEv = await createEvent(del, "ossis", { title: "Vorbei", description: "x", location: "Dresden", startsAt: local, endsAt: null });
+const futureEv = await createEvent(del, "ossis", { title: "Kommt noch", description: "x", location: "Dresden", startsAt: local, endsAt: null });
+await setRegistration(b, "ossis", futureEv.id, true);
+await db().update(t.events).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(t.events.id, pastEv.id));
+await uploadImages(b, { kind: "event", eventId: pastEv.id }, [file], null).catch(() => null);
+await deleteAccount(del, "falsch", "smoke").then(() => ok(false, "falsches Passwort"), () => ok(true, "Konto löschen mit falschem Passwort abgelehnt"));
+await deleteAccount(del, "geheim123", "smoke");
+ok(!(await db().query.users.findFirst({ where: eq(t.users.id, del.userId) })), "Konto gelöscht");
+ok((await db().select().from(t.events).where(eq(t.events.organizerId, del.userId))).length === 0, "eigene Events gelöscht");
+ok((await db().select().from(t.images).where(eq(t.images.uploaderId, del.userId))).length === 0, "eigene Bilder gelöscht");
+ok((await db().select().from(t.storageDeletions)).length === 0, "Bild-Objekte im Speicher gelöscht");
+const gone = await db().select().from(t.mailOutbox).where(sql`${t.mailOutbox.createdAt} >= now() - interval '1 minute'`);
+ok(gone.some((m) => m.toEmail === `bernd-${suffix}@example.org` && m.subject === "Abgesagt: Kommt noch"), "Angemeldete erhalten Absage für anstehendes Event");
+ok(gone.some((m) => m.toEmail === `gustav-${suffix}@example.org` && m.subject.includes("gelöscht")), "Bestätigungsmail über die Löschung");
 
 // Aufräumen
 await db().delete(t.users).where(sql`${t.users.email} like ${"%-" + suffix + "@example.org"}`);

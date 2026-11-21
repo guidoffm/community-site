@@ -7,6 +7,7 @@ Plattform für Personengruppen: Communities anlegen und beitreten, Mitglieder an
 - **Nachrichten** innerhalb einer Community an alle oder ausgewählte Mitglieder, mit Antworten; Empfänger werden per E-Mail benachrichtigt (ohne Inhalt – gelesen wird auf der Website)
 - **Events** mit Titel, Beschreibung, Ort und Datum; alle Mitglieder werden per E-Mail informiert (inkl. `.ics`-Anhang), Anmeldung zur Teilnahme, Organisator sieht Teilnehmerliste, Download als `.ics`, Absage mit Benachrichtigung
 - **Event-Fotos:** nach Beginn des Events können Teilnehmer Fotos hochladen; sichtbar nur für Teilnehmer
+- **Mein Konto** (`/account`): Konto mit Passwort löschen – alle Daten werden entfernt, anstehende eigene Events abgesagt
 - **Homepage** je Mitglied mit Text und Bildergalerie, sichtbar für Mitglieder gemeinsamer Communities oder öffentlich
 - **Bilder:** Thumbnails (WebP) in der Übersicht, Lightbox mit voller Größe; EXIF/GPS wird entfernt; Speicherung in S3-kompatiblem Speicher (MinIO), jedes Bild mit UUID
 

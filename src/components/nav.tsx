@@ -27,10 +27,10 @@ export async function Nav() {
         <div className="ml-auto flex items-center gap-2">
           {actor ? (
             <>
-              <span className="hidden items-center gap-2 text-slate-600 sm:inline-flex">
+              <a href={siteUrl("/account")} className="inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-slate-600 transition hover:bg-brand-light" title="Mein Konto">
                 <Avatar name={actor.name} id={actor.userId} size="h-8 w-8 text-xs" />
-                {actor.name}
-              </span>
+                <span className="hidden sm:inline">{actor.name}</span>
+              </a>
               <form action={logout}>
                 <button className="btn-secondary px-3 py-1.5">Abmelden</button>
               </form>

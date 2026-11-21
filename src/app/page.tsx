@@ -16,14 +16,15 @@ const FEATURES = [
   { icon: "🏡", title: "Homepage", text: "Deine eigene Seite mit Text und Galerie für deine Communities." },
 ];
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
-  const { welcome } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ welcome?: string; deleted?: string }> }) {
+  const { welcome, deleted } = await searchParams;
   const actor = await getActor();
   const all = await listCommunities(actor);
 
   if (!actor) {
     return (
       <div className="space-y-14">
+        {deleted && <p className="alert-success">Dein Konto und alle zugehörigen Daten wurden gelöscht. Danke, dass du dabei warst!</p>}
         <section className="relative isolate -mx-4 overflow-hidden rounded-none px-4 py-14 text-center sm:mx-0 sm:rounded-3xl">
           <Blobs />
           <span className="chip bg-white/80 text-brand-dark shadow-sm">✨ Für alle, die zusammengehören</span>

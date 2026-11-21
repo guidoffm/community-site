@@ -120,3 +120,23 @@ export async function notifyEmailVerification(tx: Tx, user: Recipient, token: st
     tx,
   );
 }
+
+export async function notifyAccountDeleted(tx: Tx, user: Recipient) {
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Dein Konto bei ${APP_NAME} wurde gelöscht`,
+        text: `Hallo ${user.name},\n\ndein Konto bei ${APP_NAME} und alle zugehörigen Daten (Mitgliedschaften, Nachrichten, Events, Homepage und Bilder) wurden gelöscht.\n\nSchade, dass du gehst – du kannst dich jederzeit neu registrieren:\n${siteUrl("/register")}\n`,
+        html: layout(
+          "Konto gelöscht",
+          `<p>Hallo ${escapeHtml(user.name)},</p>
+           <p>dein Konto bei ${escapeHtml(APP_NAME)} und alle zugehörigen Daten (Mitgliedschaften, Nachrichten, Events, Homepage und Bilder) wurden gelöscht.</p>
+           <p>Schade, dass du gehst – du kannst dich jederzeit neu registrieren.</p>`,
+          { label: "Zu " + APP_NAME, url: siteUrl("/") },
+        ),
+      },
+    ],
+    tx,
+  );
+}
