@@ -63,6 +63,38 @@ function whereRow(e: { location: string; mapUrl: string | null }) {
   return `<tr><td style="padding:4px 16px 4px 0;color:#64748b">Wo</td><td>${escapeHtml(e.location)} · <a href="${escapeHtml(eventMapUrl(e))}" style="color:#7c3aed">Karte öffnen</a></td></tr>`;
 }
 
+/** Organisator: jemand hat sich an- bzw. abgemeldet. */
+export async function notifyOrganizerOfRegistration(
+  tx: Tx,
+  e: EventInfo,
+  organizer: Recipient,
+  participantName: string,
+  registered: boolean,
+  total: number,
+) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  const zusagen = `${total} ${total === 1 ? "Zusage" : "Zusagen"}`;
+  const what = registered ? "hat sich angemeldet" : "hat sich abgemeldet";
+  await enqueueMails(
+    [
+      {
+        to: { email: organizer.email, name: organizer.name },
+        subject: `${registered ? "Neue Anmeldung" : "Abmeldung"}: ${participantName} – ${e.title} (jetzt ${zusagen})`,
+        text: `Hallo ${organizer.name},\n\n${participantName} ${what} für dein Event „${e.title}“ (${when}).\n\nAktuell: ${zusagen}.\n\nTeilnehmerliste: ${url}\n`,
+        html: layout(
+          registered ? "🙋 Neue Anmeldung" : "Abmeldung",
+          `<p>Hallo ${escapeHtml(organizer.name)},</p>
+           <p><strong>${escapeHtml(participantName)}</strong> ${what} für dein Event <strong>${escapeHtml(e.title)}</strong> (${escapeHtml(when)}).</p>
+           <p style="font-size:18px;background:#f3e8ff;color:#5b21b6;padding:10px 16px;border-radius:10px;display:inline-block">Aktuell: <strong>${zusagen}</strong></p>`,
+          { label: "Teilnehmerliste ansehen", url },
+        ),
+      },
+    ],
+    tx,
+  );
+}
+
 /** Bestätigung an Teilnehmer: Anmeldung (mit ICS) bzw. Abmeldung (mit Absage-ICS, entfernt den Kalendereintrag). */
 export async function notifyRegistration(tx: Tx, e: EventInfo, user: Recipient, registered: boolean) {
   const url = eventUrl(e.communitySlug, e.id);

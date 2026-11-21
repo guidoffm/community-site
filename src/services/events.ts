@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, t } from "@/db";
+import { DELETED_USER_ID } from "@/db/schema";
 import type { Actor } from "@/lib/auth/session";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { parseLocalDateTime } from "@/lib/dates";
 import { buildIcs, eventUrl } from "@/lib/ics";
 import { communityContext } from "./communities";
-import { notifyEventCancelled, notifyNewEvent, notifyRegistration } from "./notifications";
+import { notifyEventCancelled, notifyNewEvent, notifyOrganizerOfRegistration, notifyRegistration } from "./notifications";
 import { deleteScheduled, scheduleImageDeletion } from "./storage-cleanup";
 
 /** Event hat begonnen → Fotos dürfen hochgeladen werden, Anmeldung ist geschlossen. */
@@ -145,14 +146,16 @@ export async function setRegistration(actor: Actor, slug: string, eventId: strin
           .delete(t.eventRegistrations)
           .where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, actor.userId)))
           .returning();
-    // Bestätigung nur bei tatsächlicher Änderung (kein Doppelversand bei Doppelklick)
-    if (changed.length)
-      await notifyRegistration(
-        tx,
-        { ...event, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug },
-        { email: actor.email, name: actor.name },
-        register,
-      );
+    // Mails nur bei tatsächlicher Änderung (kein Doppelversand bei Doppelklick)
+    if (!changed.length) return;
+    const info = { ...event, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug };
+    await notifyRegistration(tx, info, { email: actor.email, name: actor.name }, register);
+
+    // Organisator informieren (Name des Teilnehmers + aktuelle Zahl der Zusagen, keine E-Mail-Adresse)
+    const [org] = await tx.select({ email: t.users.email, name: t.users.name }).from(t.users).where(eq(t.users.id, event.organizerId));
+    const [cnt] = await tx.select({ n: count() }).from(t.eventRegistrations).where(eq(t.eventRegistrations.eventId, event.id));
+    if (org && event.organizerId !== actor.userId && event.organizerId !== DELETED_USER_ID)
+      await notifyOrganizerOfRegistration(tx, info, org, actor.name, register, cnt.n);
   });
 }
 

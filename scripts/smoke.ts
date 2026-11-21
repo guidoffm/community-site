@@ -107,7 +107,10 @@ const regMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbo
 ok(regMails.length === 1 && regMails[0].attachments?.[0]?.filename === "event.ics", "Anmeldebestätigung mit ICS (genau einmal)");
 const regIcs = Buffer.from(regMails[0].attachments![0].contentBase64, "base64").toString().replace(/\r\n /g, "");
 ok(regIcs.includes("Karte: https://www.google.com/maps/search/") && regMails[0].text.includes("Karte: "), "Karten-Link in Mail und ICS");
+const orgMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, a.email), sql`${t.mailOutbox.subject} like 'Neue Anmeldung: Bernd Test – Stammtisch%'`));
+ok(orgMails.length === 1 && orgMails[0].subject.includes("jetzt 1 Zusage") && !orgMails[0].text.includes(b.email), "Organisator bekommt Mail bei Anmeldung (genau einmal, ohne Teilnehmer-Adresse)");
 await setRegistration(b, "ossis", ev.id, false);
+ok((await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, a.email), sql`${t.mailOutbox.subject} like 'Abmeldung: Bernd Test – Stammtisch%'`))).length === 1, "Organisator bekommt Mail bei Abmeldung");
 const offMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, b.email), eq(t.mailOutbox.subject, "Abgemeldet: Stammtisch")));
 ok(offMails.length === 1 && Buffer.from(offMails[0].attachments![0].contentBase64, "base64").toString().includes("METHOD:CANCEL"), "Abmeldung mit Absage-ICS");
 await setRegistration(b, "ossis", ev.id, true);
