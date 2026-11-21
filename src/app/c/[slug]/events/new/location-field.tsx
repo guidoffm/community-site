@@ -4,9 +4,9 @@ import { useState } from "react";
 import { mapSearchUrl } from "@/lib/maps";
 
 /** Ort mit Kartenvorschau-Link und optionalem eigenem Karten-Link. */
-export function LocationField() {
-  const [location, setLocation] = useState("");
-  const [mapUrl, setMapUrl] = useState("");
+export function LocationField({ defaultLocation = "", defaultMapUrl = "" }: { defaultLocation?: string; defaultMapUrl?: string }) {
+  const [location, setLocation] = useState(defaultLocation);
+  const [mapUrl, setMapUrl] = useState(defaultMapUrl);
   const preview = mapUrl.trim() || (location.trim().length >= 2 ? mapSearchUrl(location.trim()) : "");
   return (
     <div className="space-y-3 rounded-2xl border border-violet-100 bg-violet-50/40 p-3">

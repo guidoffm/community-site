@@ -108,7 +108,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
                     <span className="block truncate font-semibold">{e.title}</span>
                     <span className="block text-sm text-slate-500">{formatShort(e.startsAt)} · {e.communityTitle}</span>
                   </span>
-                  {e.registered && <span className="chip bg-emerald-100 text-emerald-800">✓ dabei</span>}
+                  {e.registration === "confirmed" && <span className="chip bg-emerald-100 text-emerald-800">✓ dabei</span>}
+                  {e.registration === "waitlist" && <span className="chip bg-amber-100 text-amber-800">⏳ Warteliste</span>}
                 </a>
               </li>
             ))}

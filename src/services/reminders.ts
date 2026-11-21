@@ -32,7 +32,7 @@ export async function sendEventReminders(now = new Date()) {
       name: string;
     }>(sql`
       with participants as (
-        select reg.event_id, reg.user_id, reg.created_at as since from event_registrations reg
+        select reg.event_id, reg.user_id, reg.created_at as since from event_registrations reg where reg.status = 'confirmed'
         union
         select e.id, e.organizer_id, e.created_at from events e
       )

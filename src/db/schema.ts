@@ -170,6 +170,10 @@ export const events = pgTable(
     mapUrl: text("map_url"),
     startsAt: ts("starts_at").notNull(),
     endsAt: ts("ends_at"),
+    /** maximale Personenzahl (inkl. Begleitpersonen); null = unbegrenzt */
+    capacity: integer("capacity"),
+    /** Begleitpersonen erlaubt (max. MAX_GUESTS je Anmeldung) */
+    allowGuests: boolean("allow_guests").notNull().default(false),
     ...timestamps,
   },
   (t) => [index("events_community_idx").on(t.communityId, t.startsAt)],
@@ -180,6 +184,10 @@ export const eventRegistrations = pgTable(
   {
     eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** confirmed | waitlist */
+    status: text("status").notNull().default("confirmed"),
+    /** Begleitpersonen (zusätzlich zur angemeldeten Person) */
+    guests: integer("guests").notNull().default(0),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.userId] })],

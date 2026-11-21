@@ -27,3 +27,8 @@ export function formatEventRange(start: Date, end: Date | null) {
     formatInTimeZone(start, TIMEZONE, "yyyy-MM-dd") === formatInTimeZone(end, TIMEZONE, "yyyy-MM-dd")
   return sameDay ? `${formatDateTime(start)} – ${formatTime(end)}` : `${formatDateTime(start)} – ${formatDateTime(end)}`
 }
+
+/** Für <input type="datetime-local"> in der App-Zeitzone */
+export function toLocalInput(d: Date) {
+  return formatInTimeZone(d, TIMEZONE, "yyyy-MM-dd'T'HH:mm");
+}

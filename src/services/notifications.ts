@@ -63,6 +63,83 @@ function whereRow(e: { location: string; mapUrl: string | null }) {
   return `<tr><td style="padding:4px 16px 4px 0;color:#64748b">Wo</td><td>${escapeHtml(e.location)} · <a href="${escapeHtml(eventMapUrl(e))}" style="color:#7c3aed">Karte öffnen</a></td></tr>`;
 }
 
+/** Warteliste: Event ist voll, Person steht auf Platz n. */
+export async function notifyWaitlisted(tx: Tx, e: EventInfo, user: Recipient, position: number) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Warteliste: ${e.title} (Platz ${position})`,
+        text: `Hallo ${user.name},\n\n„${e.title}“ (${when}) ist ausgebucht. Du stehst auf Platz ${position} der Warteliste. Sobald ein Platz frei wird, rückst du automatisch nach und bekommst eine E-Mail mit dem Kalendereintrag.\n\n${url}\n`,
+        html: layout(
+          `⏳ Warteliste: ${e.title}`,
+          `<p>Hallo ${escapeHtml(user.name)}, das Event am ${escapeHtml(when)} ist ausgebucht.</p>
+           <p style="font-size:18px;background:#fef3c7;color:#92400e;padding:10px 16px;border-radius:10px;display:inline-block">Du stehst auf <strong>Platz ${position}</strong> der Warteliste.</p>
+           <p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst eine E-Mail mit dem Kalendereintrag.</p>`,
+          { label: "Zum Event", url },
+        ),
+      },
+    ],
+    tx,
+  );
+}
+
+/** Nachgerückt von der Warteliste – jetzt mit Kalenderdatei. */
+export async function notifyPromoted(tx: Tx, e: EventInfo, user: Recipient) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `Du bist dabei: ${e.title} (von der Warteliste nachgerückt)`,
+        text: `Hallo ${user.name},\n\ngute Nachricht: Für „${e.title}“ ist ein Platz frei geworden – du bist jetzt dabei!\n\nWann: ${when}\nWo: ${e.location}\nKarte: ${eventMapUrl(e)}\n\n${url}\n\nDen Termin für deinen Kalender findest du im Anhang (event.ics). Keine Zeit mehr? Bitte melde dich auf der Event-Seite ab, damit der Nächste nachrücken kann.\n`,
+        html: layout(
+          `🎉 Du bist dabei: ${e.title}`,
+          `<p>Hallo ${escapeHtml(user.name)}, für das Event ist ein Platz frei geworden – du bist von der Warteliste nachgerückt.</p>
+           <table style="border-collapse:collapse">
+             <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wann</td><td>${escapeHtml(when)}</td></tr>
+             ${whereRow(e)}
+           </table>
+           <p style="color:#64748b;font-size:14px">Den Termin findest du im Anhang (event.ics). Keine Zeit mehr? Bitte melde dich ab, damit der Nächste nachrücken kann.</p>`,
+          { label: "Zum Event", url },
+        ),
+        attachments: [{ filename: "event.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: Buffer.from(buildIcs({ ...e, url })) }],
+      },
+    ],
+    tx,
+  );
+}
+
+/** Event geändert: alle Angemeldeten; Bestätigte bekommen die aktualisierte Kalenderdatei (gleiche UID, höhere SEQUENCE). */
+export async function notifyEventChanged(tx: Tx, e: EventInfo, recipients: (Recipient & { status: string })[], changes: string[]) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  const ics = Buffer.from(buildIcs({ ...e, url }));
+  const list = changes.join(", ");
+  await enqueueMails(
+    recipients.map((r) => ({
+      to: { email: r.email, name: r.name },
+      subject: `Geändert: ${e.title}`,
+      text: `Hallo ${r.name},\n\ndas Event „${e.title}“ wurde geändert (${list}).\n\nWann: ${when}\nWo: ${e.location}\nKarte: ${eventMapUrl(e)}\n\n${url}\n${r.status === "confirmed" ? "\nIm Anhang findest du den aktualisierten Kalendereintrag (event.ics).\n" : "\nDu stehst weiterhin auf der Warteliste.\n"}`,
+      html: layout(
+        `✏️ Geändert: ${e.title}`,
+        `<p>Hallo ${escapeHtml(r.name)}, das Event wurde geändert: <strong>${escapeHtml(list)}</strong>.</p>
+         <table style="border-collapse:collapse">
+           <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wann</td><td>${escapeHtml(when)}</td></tr>
+           ${whereRow(e)}
+         </table>
+         <p style="color:#64748b;font-size:14px">${r.status === "confirmed" ? "Im Anhang findest du den aktualisierten Kalendereintrag (event.ics)." : "Du stehst weiterhin auf der Warteliste."}</p>`,
+        { label: "Zum Event", url },
+      ),
+      ...(r.status === "confirmed" ? { attachments: [{ filename: "event.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: ics }] } : {}),
+    })),
+    tx,
+  );
+}
+
 /** Organisator: jemand hat sich an- bzw. abgemeldet. */
 export async function notifyOrganizerOfRegistration(
   tx: Tx,
@@ -74,7 +151,7 @@ export async function notifyOrganizerOfRegistration(
 ) {
   const url = eventUrl(e.communitySlug, e.id);
   const when = formatEventRange(e.startsAt, e.endsAt);
-  const zusagen = `${total} ${total === 1 ? "Zusage" : "Zusagen"}`;
+  const zusagen = `${total} ${total === 1 ? "Person" : "Personen"} zugesagt`;
   const what = registered ? "hat sich angemeldet" : "hat sich abgemeldet";
   await enqueueMails(
     [

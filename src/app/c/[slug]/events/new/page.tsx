@@ -5,6 +5,7 @@ import { communityUrl } from "@/lib/domains";
 import { orNotFound } from "@/lib/errors";
 import { communityContext } from "@/services/communities";
 import { LocationField } from "./location-field";
+import { CapacityFields } from "./capacity-fields";
 
 export const metadata = { title: "Event organisieren" };
 
@@ -38,6 +39,7 @@ export default async function NewEventPage({ params }: { params: Promise<{ slug:
             <input name="endsAt" type="datetime-local" className="input" />
           </label>
         </div>
+        <CapacityFields />
         <Submit className="btn">Event erstellen & Mitglieder benachrichtigen</Submit>
       </ActionForm>
     </div>

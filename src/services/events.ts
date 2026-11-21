@@ -1,26 +1,48 @@
 import { and, asc, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, t } from "@/db";
+import { db, t, type Db } from "@/db";
 import { DELETED_USER_ID } from "@/db/schema";
 import type { Actor } from "@/lib/auth/session";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { parseLocalDateTime } from "@/lib/dates";
 import { buildIcs, eventUrl } from "@/lib/ics";
 import { communityContext } from "./communities";
-import { notifyEventCancelled, notifyNewEvent, notifyOrganizerOfRegistration, notifyRegistration } from "./notifications";
+import {
+  notifyEventCancelled,
+  notifyEventChanged,
+  notifyNewEvent,
+  notifyOrganizerOfRegistration,
+  notifyPromoted,
+  notifyRegistration,
+  notifyWaitlisted,
+} from "./notifications";
 import { deleteScheduled, scheduleImageDeletion } from "./storage-cleanup";
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** Höchstzahl Begleitpersonen je Anmeldung */
+export const MAX_GUESTS = 5;
 
 /** Event hat begonnen → Fotos dürfen hochgeladen werden, Anmeldung ist geschlossen. */
 export const eventHasStarted = (e: { startsAt: Date }) => e.startsAt.getTime() <= Date.now();
 
-/** Teilnehmer = angemeldete Personen + Organisator. Nur sie sehen und laden Event-Fotos hoch. */
+/** Teilnehmer = bestätigt angemeldete Personen + Organisator (nicht die Warteliste). Nur sie sehen und laden Event-Fotos hoch. */
 export async function isParticipant(event: { id: string; organizerId: string }, userId: string | null) {
   if (!userId) return false;
   if (event.organizerId === userId) return true;
   const r = await db().query.eventRegistrations.findFirst({
-    where: and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, userId)),
+    where: and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, userId), eq(t.eventRegistrations.status, "confirmed")),
   });
   return !!r;
+}
+
+/** Belegte Plätze (bestätigte Personen inkl. Begleitpersonen) */
+async function seatsTaken(tx: Tx | Db, eventId: string) {
+  const [r] = await tx
+    .select({ n: sql<number>`coalesce(sum(1 + ${t.eventRegistrations.guests}), 0)::int` })
+    .from(t.eventRegistrations)
+    .where(and(eq(t.eventRegistrations.eventId, eventId), eq(t.eventRegistrations.status, "confirmed")));
+  return r.n;
 }
 
 const createInput = z.object({
@@ -36,22 +58,40 @@ const createInput = z.object({
     .optional(),
   startsAt: z.string(),
   endsAt: z.string().nullable().optional(),
+  capacity: z.coerce.number().int().min(1, "Das Teilnehmerlimit muss mindestens 1 sein.").max(10000).nullable().optional(),
+  allowGuests: z.boolean().default(false),
 });
+
+function parseTimes(data: { startsAt: string; endsAt?: string | null }) {
+  const startsAt = parseLocalDateTime(data.startsAt);
+  if (!startsAt) throw new AppError("VALIDATION", "Bitte gib Datum und Uhrzeit des Beginns an.");
+  const endsAt = data.endsAt ? parseLocalDateTime(data.endsAt) : null;
+  if (data.endsAt && !endsAt) throw new AppError("VALIDATION", "Das Ende ist ungültig.");
+  if (endsAt && endsAt <= startsAt) throw new AppError("VALIDATION", "Das Ende muss nach dem Beginn liegen.");
+  return { startsAt, endsAt };
+}
 
 export async function createEvent(actor: Actor, slug: string, input: unknown) {
   const { community } = await communityContext(actor, slug);
   const data = createInput.parse(input);
-  const startsAt = parseLocalDateTime(data.startsAt);
-  if (!startsAt) throw new AppError("VALIDATION", "Bitte gib Datum und Uhrzeit des Beginns an.");
+  const { startsAt, endsAt } = parseTimes(data);
   if (startsAt.getTime() < Date.now()) throw new AppError("VALIDATION", "Der Beginn liegt in der Vergangenheit.");
-  const endsAt = data.endsAt ? parseLocalDateTime(data.endsAt) : null;
-  if (data.endsAt && !endsAt) throw new AppError("VALIDATION", "Das Ende ist ungültig.");
-  if (endsAt && endsAt <= startsAt) throw new AppError("VALIDATION", "Das Ende muss nach dem Beginn liegen.");
 
   return db().transaction(async (tx) => {
     const [event] = await tx
       .insert(t.events)
-      .values({ communityId: community.id, organizerId: actor.userId, title: data.title, description: data.description, location: data.location, mapUrl: data.mapUrl || null, startsAt, endsAt })
+      .values({
+        communityId: community.id,
+        organizerId: actor.userId,
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        mapUrl: data.mapUrl || null,
+        startsAt,
+        endsAt,
+        capacity: data.capacity ?? null,
+        allowGuests: data.allowGuests,
+      })
       .returning();
     const recipients = await tx
       .select({ email: t.users.email, name: t.users.name })
@@ -76,7 +116,8 @@ export async function listEvents(actor: Actor, slug: string) {
     location: t.events.location,
     startsAt: t.events.startsAt,
     organizerName: t.users.name,
-    registrations: sql<number>`(select count(*)::int from event_registrations r where r.event_id = ${t.events.id})`,
+    registrations: sql<number>`(select coalesce(sum(1 + r.guests), 0)::int from event_registrations r where r.event_id = ${t.events.id} and r.status = 'confirmed')`,
+    capacity: t.events.capacity,
     photos: sql<number>`(select count(*)::int from images i where i.event_id = ${t.events.id})`,
   };
   const [upcoming, past] = await Promise.all([
@@ -97,7 +138,7 @@ export async function upcomingForUser(actor: Actor, limit = 10) {
       startsAt: t.events.startsAt,
       communityTitle: t.communities.title,
       communitySlug: t.communities.slug,
-      registered: sql<boolean>`exists(select 1 from event_registrations r where r.event_id = ${t.events.id} and r.user_id = ${actor.userId})`,
+      registration: sql<string | null>`(select r.status from event_registrations r where r.event_id = ${t.events.id} and r.user_id = ${actor.userId})`,
     })
     .from(t.events)
     .innerJoin(t.communities, eq(t.communities.id, t.events.communityId))
@@ -114,48 +155,154 @@ export async function getEvent(actor: Actor, slug: string, eventId: string) {
   const [organizer, registrations] = await Promise.all([
     db().query.users.findFirst({ where: eq(t.users.id, event.organizerId), columns: { id: true, name: true } }),
     db()
-      .select({ userId: t.users.id, name: t.users.name, createdAt: t.eventRegistrations.createdAt })
+      .select({ userId: t.users.id, name: t.users.name, createdAt: t.eventRegistrations.createdAt, status: t.eventRegistrations.status, guests: t.eventRegistrations.guests })
       .from(t.eventRegistrations)
       .innerJoin(t.users, eq(t.users.id, t.eventRegistrations.userId))
       .where(eq(t.eventRegistrations.eventId, event.id))
       .orderBy(asc(t.eventRegistrations.createdAt)),
   ]);
   const isOrganizer = event.organizerId === actor.userId;
-  const isRegistered = registrations.some((r) => r.userId === actor.userId);
+  const confirmed = registrations.filter((r) => r.status === "confirmed");
+  const waitlist = registrations.filter((r) => r.status === "waitlist");
+  const mine = registrations.find((r) => r.userId === actor.userId) ?? null;
+  const seats = confirmed.reduce((n, r) => n + 1 + r.guests, 0);
   return {
     event,
     community,
     organizer: organizer!,
-    registrationCount: registrations.length,
-    // Namen der Teilnehmer sieht nur der Organisator
-    registrations: isOrganizer ? registrations : [],
+    /** belegte Plätze inkl. Begleitpersonen */
+    registrationCount: seats,
+    waitlistCount: waitlist.length,
+    freeSeats: event.capacity === null ? null : Math.max(event.capacity - seats, 0),
+    // Namen sieht nur der Organisator
+    registrations: isOrganizer ? confirmed : [],
+    waitlist: isOrganizer ? waitlist : [],
+    myRegistration: mine ? { status: mine.status, guests: mine.guests, waitlistPosition: mine.status === "waitlist" ? waitlist.findIndex((w) => w.userId === mine.userId) + 1 : null } : null,
     isOrganizer,
-    isRegistered,
-    isParticipant: isOrganizer || isRegistered,
+    isRegistered: mine?.status === "confirmed",
+    isWaitlisted: mine?.status === "waitlist",
+    isParticipant: isOrganizer || mine?.status === "confirmed",
     started: eventHasStarted(event),
   };
 }
 
-export async function setRegistration(actor: Actor, slug: string, eventId: string, register: boolean) {
+export async function setRegistration(actor: Actor, slug: string, eventId: string, register: boolean, guestsRaw: unknown = 0) {
   const { event, started, community, organizer } = await getEvent(actor, slug, eventId);
   if (started) throw new AppError("CONFLICT", "Das Event hat bereits begonnen.");
-  await db().transaction(async (tx) => {
-    const changed = register
-      ? await tx.insert(t.eventRegistrations).values({ eventId: event.id, userId: actor.userId }).onConflictDoNothing().returning()
-      : await tx
-          .delete(t.eventRegistrations)
-          .where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, actor.userId)))
-          .returning();
-    // Mails nur bei tatsächlicher Änderung (kein Doppelversand bei Doppelklick)
-    if (!changed.length) return;
-    const info = { ...event, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug };
-    await notifyRegistration(tx, info, { email: actor.email, name: actor.name }, register);
+  if (event.organizerId === actor.userId) throw new AppError("CONFLICT", "Als Organisator bist du automatisch dabei.");
+  const guests = event.allowGuests ? Math.min(Math.max(Math.trunc(Number(guestsRaw) || 0), 0), MAX_GUESTS) : 0;
+  const info = { ...event, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug };
 
-    // Organisator informieren (Name des Teilnehmers + aktuelle Zahl der Zusagen, keine E-Mail-Adresse)
+  await db().transaction(async (tx) => {
+    // Sperre auf das Event: gleichzeitige Anmeldungen dürfen das Limit nicht überbuchen
+    await tx.execute(sql`select id from events where id = ${event.id} for update`);
+    let status: string;
+    if (register) {
+      const free = event.capacity === null ? Infinity : event.capacity - (await seatsTaken(tx, event.id));
+      status = 1 + guests <= free ? "confirmed" : "waitlist";
+      const ins = await tx.insert(t.eventRegistrations).values({ eventId: event.id, userId: actor.userId, status, guests }).onConflictDoNothing().returning();
+      if (!ins.length) return; // schon angemeldet – keine doppelten Mails
+    } else {
+      const del = await tx
+        .delete(t.eventRegistrations)
+        .where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, actor.userId)))
+        .returning();
+      if (!del.length) return;
+      status = del[0].status;
+    }
+
+    const me = { email: actor.email, name: actor.name };
+    if (register && status === "waitlist") {
+      const [pos] = await tx.select({ n: count() }).from(t.eventRegistrations).where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.status, "waitlist")));
+      await notifyWaitlisted(tx, info, me, pos.n);
+    } else {
+      // Bestätigung bzw. Abmeldung (mit Absage-ICS nur, wenn ein Platz bestand)
+      if (register || status === "confirmed") await notifyRegistration(tx, info, me, register);
+    }
+    // Abmeldung eines bestätigten Platzes → Warteliste rückt nach
+    if (!register && status === "confirmed") await promoteWaitlist(tx, info);
+
     const [org] = await tx.select({ email: t.users.email, name: t.users.name }).from(t.users).where(eq(t.users.id, event.organizerId));
-    const [cnt] = await tx.select({ n: count() }).from(t.eventRegistrations).where(eq(t.eventRegistrations.eventId, event.id));
-    if (org && event.organizerId !== actor.userId && event.organizerId !== DELETED_USER_ID)
-      await notifyOrganizerOfRegistration(tx, info, org, actor.name, register, cnt.n);
+    if (org && event.organizerId !== DELETED_USER_ID) {
+      const seats = await seatsTaken(tx, event.id);
+      const label = register && status === "waitlist" ? `${actor.name} (Warteliste)` : guests && register ? `${actor.name} (+${guests})` : actor.name;
+      await notifyOrganizerOfRegistration(tx, info, org, label, register, seats);
+    }
+  });
+}
+
+type EventInfo = Parameters<typeof notifyRegistration>[1];
+
+/** Wartende in Anmeldereihenfolge nachrücken lassen, solange Plätze frei sind (Gruppen, die nicht passen, werden übersprungen). */
+async function promoteWaitlist(tx: Tx, info: EventInfo & { capacity: number | null }) {
+  const waiting = await tx
+    .select({ userId: t.eventRegistrations.userId, guests: t.eventRegistrations.guests, email: t.users.email, name: t.users.name })
+    .from(t.eventRegistrations)
+    .innerJoin(t.users, eq(t.users.id, t.eventRegistrations.userId))
+    .where(and(eq(t.eventRegistrations.eventId, info.id), eq(t.eventRegistrations.status, "waitlist")))
+    .orderBy(asc(t.eventRegistrations.createdAt));
+  let free = info.capacity === null ? Infinity : info.capacity - (await seatsTaken(tx, info.id));
+  for (const w of waiting) {
+    if (free <= 0) break;
+    if (1 + w.guests > free) continue;
+    await tx
+      .update(t.eventRegistrations)
+      .set({ status: "confirmed" })
+      .where(and(eq(t.eventRegistrations.eventId, info.id), eq(t.eventRegistrations.userId, w.userId)));
+    free -= 1 + w.guests;
+    await notifyPromoted(tx, info, { email: w.email, name: w.name });
+  }
+}
+
+// ---------------------------------------------------------------- Bearbeiten
+export async function updateEvent(actor: Actor, slug: string, eventId: string, input: unknown) {
+  const { event, community, organizer, isOrganizer } = await getEvent(actor, slug, eventId);
+  if (!isOrganizer) throw forbidden("Nur der Organisator kann das Event bearbeiten.");
+  const data = createInput.parse(input);
+  const { startsAt, endsAt } = parseTimes(data);
+  const timeChanged = startsAt.getTime() !== event.startsAt.getTime() || (endsAt?.getTime() ?? null) !== (event.endsAt?.getTime() ?? null);
+  if (startsAt.getTime() !== event.startsAt.getTime() && startsAt.getTime() < Date.now())
+    throw new AppError("VALIDATION", "Der neue Beginn liegt in der Vergangenheit.");
+
+  const changes: string[] = [];
+  if (data.title !== event.title) changes.push(`Titel: ${data.title}`);
+  if (timeChanged) changes.push("Zeit");
+  if (data.location !== event.location || (data.mapUrl || null) !== event.mapUrl) changes.push(`Ort: ${data.location}`);
+  if (data.description !== event.description) changes.push("Beschreibung");
+
+  return db().transaction(async (tx) => {
+    await tx.execute(sql`select id from events where id = ${event.id} for update`);
+    const [updated] = await tx
+      .update(t.events)
+      .set({
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        mapUrl: data.mapUrl || null,
+        startsAt,
+        endsAt,
+        capacity: data.capacity ?? null,
+        allowGuests: data.allowGuests,
+        updatedAt: new Date(),
+      })
+      .where(eq(t.events.id, event.id))
+      .returning();
+    // neue Zeit → Erinnerungen neu planen
+    if (timeChanged) await tx.delete(t.eventReminders).where(eq(t.eventReminders.eventId, event.id));
+    const info = { ...updated, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug };
+    // Wichtige Änderungen an alle Angemeldeten (inkl. Warteliste), Bestätigte mit aktualisierter Kalenderdatei
+    const important = changes.filter((c) => c !== "Beschreibung");
+    if (important.length && !eventHasStarted(updated)) {
+      const regs = await tx
+        .select({ email: t.users.email, name: t.users.name, status: t.eventRegistrations.status })
+        .from(t.eventRegistrations)
+        .innerJoin(t.users, eq(t.users.id, t.eventRegistrations.userId))
+        .where(eq(t.eventRegistrations.eventId, event.id));
+      await notifyEventChanged(tx, info, regs, important);
+    }
+    // mehr Plätze → Warteliste rückt nach
+    await promoteWaitlist(tx, info);
+    return { event: updated, notified: important.length > 0 };
   });
 }
 

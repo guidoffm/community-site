@@ -7,7 +7,7 @@ import { DELETED_USER_ID } from "../src/db/schema";
 import { authenticate, changePassword, deleteUnverifiedUsers, peekPasswordReset, peekVerification, register, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "../src/services/users";
 import { finishLogin, startLogin, startRegistration } from "../src/services/passkeys";
 import { createCommunity, getCommunity, joinCommunity, updateCommunity } from "../src/services/communities";
-import { createEvent, getEvent, setRegistration } from "../src/services/events";
+import { createEvent, getEvent, isParticipant, setRegistration, updateEvent } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
 import { saveHomepage, viewHomepage } from "../src/services/homepages";
@@ -109,7 +109,7 @@ ok(regMails.length === 1 && regMails[0].attachments?.[0]?.filename === "event.ic
 const regIcs = Buffer.from(regMails[0].attachments![0].contentBase64, "base64").toString().replace(/\r\n /g, "");
 ok(regIcs.includes("Karte: https://www.google.com/maps/search/") && regMails[0].text.includes("Karte: "), "Karten-Link in Mail und ICS");
 const orgMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, a.email), sql`${t.mailOutbox.subject} like 'Neue Anmeldung: Bernd Test – Stammtisch%'`));
-ok(orgMails.length === 1 && orgMails[0].subject.includes("jetzt 1 Zusage") && !orgMails[0].text.includes(b.email), "Organisator bekommt Mail bei Anmeldung (genau einmal, ohne Teilnehmer-Adresse)");
+ok(orgMails.length === 1 && orgMails[0].subject.includes("jetzt 1 Person zugesagt") && !orgMails[0].text.includes(b.email), "Organisator bekommt Mail bei Anmeldung (genau einmal, ohne Teilnehmer-Adresse)");
 await setRegistration(b, "ossis", ev.id, false);
 ok((await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, a.email), sql`${t.mailOutbox.subject} like 'Abmeldung: Bernd Test – Stammtisch%'`))).length === 1, "Organisator bekommt Mail bei Abmeldung");
 const offMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, b.email), eq(t.mailOutbox.subject, "Abgemeldet: Stammtisch")));
@@ -230,6 +230,43 @@ const remMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.to
 ok(remMail && remMail.text.includes("Karte: "), "Erinnerungsmail mit Ort und Karten-Link");
 await db().delete(t.events).where(eq(t.events.id, remEv.id));
 
+const mailsTo = async (email: string, like: string) => (await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, email), sql`${t.mailOutbox.subject} like ${like}`))).length;
+
+// --- Events: Limit, Warteliste, Begleitpersonen, Bearbeiten
+const capEv = await createEvent(a, "ossis", { title: "Kleine Runde", description: "x", location: "Halle", startsAt: local, endsAt: null, capacity: 3, allowGuests: true });
+const anton = actor(await registerVerified("Anton Gast", `anton-${suffix}@example.org`, [ossis.id]));
+const berta = actor(await registerVerified("Berta Gast", `berta-${suffix}@example.org`, [ossis.id]));
+await setRegistration(b, "ossis", capEv.id, true, 1); // Bernd +1 → 2 von 3
+await setRegistration(anton, "ossis", capEv.id, true, 1); // Anton +1 passt nicht → Warteliste 1
+await setRegistration(berta, "ossis", capEv.id, true, 0); // Berta allein passt → bestätigt (3/3)
+let ce = await getEvent(a, "ossis", capEv.id);
+ok(ce.registrationCount === 3 && ce.freeSeats === 0 && ce.waitlist.length === 1 && ce.waitlist[0].name === "Anton Gast", "Limit mit Begleitpersonen, Überzählige auf der Warteliste");
+ok((await getEvent(anton, "ossis", capEv.id)).myRegistration?.waitlistPosition === 1, "Wartelistenplatz wird angezeigt");
+ok((await mailsTo(anton.email, "Warteliste: Kleine Runde (Platz 1)")) === 1, "Mail mit Wartelistenplatz");
+await setRegistration(e, "ossis", capEv.id, true, 9);
+const emilReg = (await getEvent(e, "ossis", capEv.id)).myRegistration;
+ok(emilReg?.guests === 5 && emilReg.status === "waitlist", "Begleitpersonen auf Maximum (5) begrenzt");
+ok(!(await isParticipant(capEv, e.userId)), "Warteliste zählt nicht als Teilnehmer (keine Event-Fotos)");
+await setRegistration(b, "ossis", capEv.id, false); // Bernd (+1) sagt ab → 2 Plätze frei → Anton (+1) rückt nach
+ce = await getEvent(a, "ossis", capEv.id);
+ok(ce.registrations.some((r) => r.name === "Anton Gast" && r.guests === 1) && ce.registrationCount === 3, "Absage → Warteliste rückt nach");
+const promo = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, anton.email))).find((m) => m.subject.startsWith("Du bist dabei: Kleine Runde"));
+ok(promo?.attachments?.[0]?.filename === "event.ics", "Nachgerückt-Mail mit Kalenderdatei");
+ok(await isParticipant(capEv, anton.userId), "Nachgerückte sind Teilnehmer");
+// Bearbeiten: Ort + Zeit ändern, Limit erhöhen → Emil (Warteliste) rückt nach
+const later = new Date(Date.now() + 2 * 86_400_000);
+const localLater = `${later.getFullYear()}-${pad(later.getMonth() + 1)}-${pad(later.getDate())}T20:00`;
+await updateEvent(b, "ossis", capEv.id, { title: "x", description: "x", location: "x", startsAt: localLater }).then(() => ok(false, "Fremde bearbeiten"), () => ok(true, "Nur der Organisator kann bearbeiten"));
+const updEv = await updateEvent(a, "ossis", capEv.id, { title: "Kleine Runde", description: "x", location: "Leipzig, Markt 1", startsAt: localLater, endsAt: null, capacity: 20, allowGuests: true });
+ok(updEv.notified && updEv.event.location === "Leipzig, Markt 1", "Event bearbeitet");
+const chg = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, berta.email))).find((m) => m.subject === "Geändert: Kleine Runde");
+ok(chg?.attachments?.[0]?.filename === "event.ics" && chg.text.includes("Leipzig, Markt 1"), "Änderungsmail mit aktualisierter Kalenderdatei");
+const chgIcs = Buffer.from(chg!.attachments![0].contentBase64, "base64").toString().replace(/\r\n /g, "");
+ok(chgIcs.includes(`UID:event-${capEv.id}@`) && chgIcs.includes("Leipzig\\, Markt 1"), "gleiche Kalender-UID → Eintrag wird aktualisiert");
+ce = await getEvent(a, "ossis", capEv.id);
+ok(ce.waitlist.length === 0 && ce.registrations.some((r) => r.name === "Emil Test" && r.guests === 5), "Limit erhöht → Warteliste rückt nach");
+await db().delete(t.events).where(eq(t.events.id, capEv.id));
+
 // --- Nutzungsbedingungen & Meldeverfahren (DSA)
 await register({ name: "Ohne Zustimmung", email: `nozust-${suffix}@example.org`, password: "geheim123" }, `smoke-t-${suffix}`).then(() => ok(false, "ohne AGB"), (e) => ok(/Nutzungsbedingungen/.test(e.message), "Registrierung ohne Zustimmung abgelehnt"));
 await register({ acceptTerms: true, name: "Zu Jung", email: `jung-${suffix}@example.org`, password: "geheim123" }, `smoke-t-${suffix}`).then(() => ok(false, "ohne Alter"), (e) => ok(/16 Jahren/.test(e.message), "Registrierung ohne Altersbestätigung abgelehnt"));
@@ -240,7 +277,6 @@ await createReport(null, { targetType: "message", targetId: bad.id, reason: "ill
 const rep = await createReport(null, { targetType: "message", targetId: bad.id, reason: "illegal", details: "Das ist eine Beleidigung.", goodFaith: true, reporterName: "Rita Melder", reporterEmail: `rita-${suffix}@example.org` }, `smoke-r-${suffix}`);
 const rep2 = await createReport(b, { targetType: "message", targetId: bad.id, reason: "harassment", details: "Belästigt mich seit Tagen.", goodFaith: true }, `smoke-r2-${suffix}`);
 ok(rep.status === "open" && rep2.reporterEmail === b.email, "Meldungen anonym und angemeldet möglich");
-const mailsTo = async (email: string, like: string) => (await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, email), sql`${t.mailOutbox.subject} like ${like}`))).length;
 ok((await mailsTo(`rita-${suffix}@example.org`, "Deine Meldung ist eingegangen%")) === 1, "Eingangsbestätigung an Meldende");
 ok((await mailsTo(a.email, "Neue Meldung:%")) >= 2, "Site-Admins werden informiert");
 await listReports(b, "open").then(() => ok(false, "Nicht-Admin"), () => ok(true, "Meldungsliste nur für Site-Admins"));
