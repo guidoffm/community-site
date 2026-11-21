@@ -64,6 +64,13 @@
       "when": 1795252559232,
       "tag": "0008_password_resets",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795253100244,
+      "tag": "0009_passkeys_login_codes",
+      "breakpoints": true
     }
   ]
 }

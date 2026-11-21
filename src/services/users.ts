@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, t } from "@/db";
 import { DELETED_USER_ID } from "@/db/schema";
@@ -7,17 +7,21 @@ import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { blockedFor, clearFailures, recordFailure } from "@/lib/auth/rate-limit";
-import { notifyEmailVerification, notifyPasswordReset } from "./notifications";
+import { notifyEmailVerification, notifyLoginCode, notifyPasswordReset } from "./notifications";
 
 /** Frist für die Bestätigung der E-Mail-Adresse; danach löscht der Job unverified-cleanup das Konto. */
 export const VERIFICATION_TTL_MS = 24 * 3_600_000;
+/** Platzhalter-Hash: kein Passwort gesetzt */
+export const NO_PASSWORD = "!";
+export const hasPassword = (u: { passwordHash: string }) => u.passwordHash.startsWith("$2");
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 const registerInput = z.object({
   name: z.string().trim().min(2, "Bitte gib deinen Namen an.").max(80),
   email: z.email("Bitte gib eine gültige E-Mail-Adresse an.").transform((e) => e.trim().toLowerCase()),
-  password: z.string().min(8, "Das Passwort muss mindestens 8 Zeichen lang sein.").max(200),
+  /** optional: ohne Passwort meldet man sich per Passkey oder E-Mail-Code an */
+  password: z.union([z.literal(""), z.string().min(8, "Das Passwort muss mindestens 8 Zeichen lang sein.").max(200)]).nullable().optional(),
   communityIds: z.array(z.uuid()).default([]),
   next: z.string().max(500).nullable().optional(),
 });
@@ -41,7 +45,7 @@ export async function register(input: unknown, ip: string) {
     const existing = await tx.query.users.findFirst({ where: eq(t.users.email, data.email) });
     if (existing?.emailVerifiedAt) throw new AppError("CONFLICT", "Für diese E-Mail-Adresse existiert bereits ein Konto.");
 
-    const values = { name: data.name, email: data.email, passwordHash: await hashPassword(data.password) };
+    const values = { name: data.name, email: data.email, passwordHash: data.password ? await hashPassword(data.password) : NO_PASSWORD };
     const [user] = existing
       ? await tx.update(t.users).set({ ...values, createdAt: new Date() }).where(eq(t.users.id, existing.id)).returning()
       : await tx.insert(t.users).values(values).returning();
@@ -104,7 +108,9 @@ export async function deleteUnverifiedUsers() {
     .returning({ id: t.users.id });
   const tokens = await db().delete(t.emailVerifications).where(lt(t.emailVerifications.expiresAt, new Date())).returning({ h: t.emailVerifications.tokenHash });
   const resets = await db().delete(t.passwordResets).where(lt(t.passwordResets.expiresAt, new Date())).returning({ h: t.passwordResets.tokenHash });
-  return { usersDeleted: deleted.length, expiredLinksDeleted: tokens.length + resets.length };
+  const codes = await db().delete(t.loginCodes).where(lt(t.loginCodes.expiresAt, new Date())).returning({ id: t.loginCodes.id });
+  await db().delete(t.authChallenges).where(lt(t.authChallenges.expiresAt, new Date()));
+  return { usersDeleted: deleted.length, expiredLinksDeleted: tokens.length + resets.length + codes.length };
 }
 
 export async function authenticate(emailRaw: string, password: string, ip: string) {
@@ -114,7 +120,7 @@ export async function authenticate(emailRaw: string, password: string, ip: strin
   if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
 
   const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
-  const valid = !!user && user.id !== DELETED_USER_ID && user.passwordHash.startsWith("$2") && (await verifyPassword(password, user.passwordHash));
+  const valid = !!user && user.id !== DELETED_USER_ID && hasPassword(user) && (await verifyPassword(password, user.passwordHash));
   if (!user || !valid) {
     await recordFailure(...keys);
     throw new AppError("UNAUTHORIZED", "E-Mail oder Passwort ist falsch.");
@@ -202,10 +208,61 @@ export async function changePassword(userId: string, current: string, next: unkn
   const wait = await blockedFor([[key, 5]]);
   if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
   const user = await db().query.users.findFirst({ where: eq(t.users.id, userId) });
-  if (!user || !(await verifyPassword(current, user.passwordHash))) {
+  // Wer noch kein Passwort hat (Passkey/E-Mail-Code), kann direkt eins festlegen
+  if (!user || (hasPassword(user) && !(await verifyPassword(current, user.passwordHash)))) {
     await recordFailure(key);
     throw new AppError("UNAUTHORIZED", "Das aktuelle Passwort ist falsch.");
   }
   await db().update(t.users).set({ passwordHash: await hashPassword(password), passwordChangedAt: new Date() }).where(eq(t.users.id, userId));
   await clearFailures(key);
+}
+
+// ---------------------------------------------------------------- Anmeldung per E-Mail-Code
+export const LOGIN_CODE_TTL_MS = 10 * 60_000;
+const LOGIN_CODE_MAX_ATTEMPTS = 5;
+const codeHash = (email: string, code: string) =>
+  createHash("sha256").update(`${process.env.SESSION_SECRET ?? ""}:${email}:${code}`).digest("hex");
+
+/** Code anfordern. Antwortet immer gleich; Rückgabe enthält den Code nur für Tests. */
+export async function requestLoginCode(emailRaw: string, ip: string): Promise<{ code?: string }> {
+  const email = String(emailRaw ?? "").trim().toLowerCase();
+  const keys: [string, number][] = [[`logincode:ip:${ip}`, 10], [`logincode:email:${email}`, 5]];
+  const wait = await blockedFor(keys);
+  if (wait) throw new AppError("FORBIDDEN", `Zu viele Anfragen. Bitte in ${wait} Minuten erneut versuchen.`);
+  await recordFailure(...keys.map(([k]) => k));
+  if (!z.email().safeParse(email).success) return {};
+  const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
+  if (!user?.emailVerifiedAt || user.id === DELETED_USER_ID) return {};
+
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  await db().transaction(async (tx) => {
+    await tx.delete(t.loginCodes).where(eq(t.loginCodes.email, email));
+    await tx.insert(t.loginCodes).values({ email, codeHash: codeHash(email, code), expiresAt: new Date(Date.now() + LOGIN_CODE_TTL_MS) });
+    await notifyLoginCode(tx, { email: user.email, name: user.name }, code);
+  });
+  return { code };
+}
+
+export async function verifyLoginCode(emailRaw: string, codeRaw: string, ip: string) {
+  const email = String(emailRaw ?? "").trim().toLowerCase();
+  const code = String(codeRaw ?? "").replace(/\s+/g, "");
+  const wait = await blockedFor([[`logincode-verify:ip:${ip}`, 20]]);
+  if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
+  const fail = async (id?: string) => {
+    await recordFailure(`logincode-verify:ip:${ip}`);
+    if (id) await db().update(t.loginCodes).set({ attempts: sql`${t.loginCodes.attempts} + 1` }).where(eq(t.loginCodes.id, id));
+    return new AppError("UNAUTHORIZED", "Der Code ist falsch oder abgelaufen.");
+  };
+  const row = await db().query.loginCodes.findFirst({
+    where: and(eq(t.loginCodes.email, email), gt(t.loginCodes.expiresAt, new Date())),
+  });
+  if (!row || row.attempts >= LOGIN_CODE_MAX_ATTEMPTS || !/^\d{6}$/.test(code)) throw await fail(row?.id);
+  const a = Buffer.from(row.codeHash);
+  const b = Buffer.from(codeHash(email, code));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw await fail(row.id);
+
+  await db().delete(t.loginCodes).where(eq(t.loginCodes.email, email));
+  const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
+  if (!user?.emailVerifiedAt) throw new AppError("UNAUTHORIZED", "Konto nicht aktiv.");
+  return user;
 }

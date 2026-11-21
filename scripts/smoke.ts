@@ -4,7 +4,8 @@ import sharp from "sharp";
 import { and, eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
 import { DELETED_USER_ID } from "../src/db/schema";
-import { authenticate, changePassword, deleteUnverifiedUsers, peekPasswordReset, peekVerification, register, requestPasswordReset, resetPassword, verifyEmail } from "../src/services/users";
+import { authenticate, changePassword, deleteUnverifiedUsers, peekPasswordReset, peekVerification, register, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "../src/services/users";
+import { finishLogin, startLogin, startRegistration } from "../src/services/passkeys";
 import { createCommunity, getCommunity, joinCommunity, updateCommunity } from "../src/services/communities";
 import { createEvent, getEvent, setRegistration } from "../src/services/events";
 import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "../src/services/messages";
@@ -169,6 +170,31 @@ ok(bUser?.passwordChangedAt, "ältere Sitzungen werden ungültig (passwordChange
 await changePassword(b.userId, "falsch", "egal12345").then(() => ok(false, "falsch"), () => ok(true, "Passwort ändern mit falschem aktuellem Passwort abgelehnt"));
 await changePassword(b.userId, "neuesPasswort1", "geheim123");
 await authenticate(b.email, "geheim123", `smoke-pw3-${suffix}`).then(() => ok(true, "Passwort geändert"));
+
+// --- Ohne Passwort: Registrierung, E-Mail-Code, Passkey-Optionen
+const pwless = await register({ name: "Paula Passkey", email: `paula-${suffix}@example.org`, password: "", communityIds: [] }, `smoke-pl-${suffix}`);
+const paula = actor((await verifyEmail(pwless.token)).user);
+ok(pwless.user.passwordHash === "!", "Registrierung ohne Passwort möglich");
+await authenticate(paula.email, "!", `smoke-pl-${suffix}`).then(() => ok(false, "kein Passwort"), () => ok(true, "ohne Passwort kein Passwort-Login"));
+ok(!(await requestLoginCode("unbekannt@example.org", `smoke-pl-${suffix}`)).code, "Code für unbekannte Adresse: keine Mail, gleiche Antwort");
+const lc = await requestLoginCode(paula.email, `smoke-pl-${suffix}`);
+ok(lc.code && /^\d{6}$/.test(lc.code), "6-stelliger Code angefordert");
+const lcMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, paula.email))).find((m) => m.subject.includes("Anmeldecode"));
+ok(lcMail && lcMail.text.includes(`${lc.code!.slice(0, 3)} ${lc.code!.slice(3)}`), "Code-Mail verschickt");
+const wrong = lc.code === "000000" ? "111111" : "000000";
+await verifyLoginCode(paula.email, wrong, `smoke-pl-${suffix}`).then(() => ok(false, "falscher Code"), () => ok(true, "falscher Code abgelehnt"));
+ok((await verifyLoginCode(paula.email, `${lc.code!.slice(0, 3)} ${lc.code!.slice(3)}`, `smoke-pl-${suffix}`)).id === paula.userId, "Anmeldung mit Code (auch mit Leerzeichen)");
+await verifyLoginCode(paula.email, lc.code!, `smoke-pl-${suffix}`).then(() => ok(false, "Code zweimal"), () => ok(true, "Code nur einmal verwendbar"));
+const lc2 = await requestLoginCode(paula.email, `smoke-pl2-${suffix}`);
+for (let i = 0; i < 5; i++) await verifyLoginCode(paula.email, lc2.code === "000000" ? "111111" : "000000", `smoke-pl-x${i}-${suffix}`).catch(() => null);
+await verifyLoginCode(paula.email, lc2.code!, `smoke-pl-y-${suffix}`).then(() => ok(false, "nach 5 Fehlversuchen"), () => ok(true, "Code nach 5 Fehlversuchen gesperrt"));
+await changePassword(paula.userId, "", "erstesPasswort1");
+await authenticate(paula.email, "erstesPasswort1", `smoke-pl3-${suffix}`).then(() => ok(true, "Passwort nachträglich festlegen ohne altes Passwort"));
+const reg = await startRegistration(paula);
+ok(reg.options.rp.id === "lvh.me" && reg.options.authenticatorSelection?.residentKey === "required", `Passkey-Optionen: RP ${reg.options.rp.id}, Discoverable`);
+const lo = await startLogin();
+await finishLogin(lo.challengeId, { id: "unbekannt", rawId: "unbekannt", type: "public-key", clientExtensionResults: {}, response: { clientDataJSON: "", authenticatorData: "", signature: "" } } as never).then(() => ok(false, "unbekannter Passkey"), (e) => ok(/nicht \(mehr\) hinterlegt/.test(e.message), "unbekannter Passkey abgelehnt"));
+await finishLogin(lo.challengeId, {} as never).then(() => ok(false, "Challenge zweimal"), (e) => ok(/abgelaufen/.test(e.message), "Challenge nur einmal verwendbar"));
 
 // --- Erinnerungen
 const remEv = await createEvent(a, "ossis", { title: "Erinnerungstest", description: "x", location: "Leipzig", startsAt: local, endsAt: null });

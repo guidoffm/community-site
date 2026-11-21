@@ -19,6 +19,7 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
+  /** bcrypt-Hash; "!" = kein Passwort gesetzt (Anmeldung nur per Passkey oder E-Mail-Code) */
   passwordHash: text("password_hash").notNull(),
   /** Sessions, die vor diesem Zeitpunkt ausgestellt wurden, sind ungültig */
   passwordChangedAt: ts("password_changed_at"),
@@ -43,6 +44,49 @@ export const emailVerifications = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("email_verifications_user_idx").on(t.userId)],
+);
+
+/** Passkeys (WebAuthn). Gespeichert wird nur der öffentliche Schlüssel. */
+export const passkeys = pgTable(
+  "passkeys",
+  {
+    /** Credential-ID (base64url) */
+    id: text("id").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** öffentlicher Schlüssel (COSE, base64url) */
+    publicKey: text("public_key").notNull(),
+    counter: integer("counter").notNull().default(0),
+    transports: jsonb("transports").$type<string[]>(),
+    deviceType: text("device_type"),
+    backedUp: boolean("backed_up").notNull().default(false),
+    name: text("name").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastUsedAt: ts("last_used_at"),
+  },
+  (t) => [index("passkeys_user_idx").on(t.userId)],
+);
+
+/** Einmalige WebAuthn-Challenges (5 min). Die ID liegt im Cookie c15k_wa des Browsers. */
+export const authChallenges = pgTable("auth_challenges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  challenge: text("challenge").notNull(),
+  kind: text("kind").notNull(), // passkey-login | passkey-register
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: ts("expires_at").notNull(),
+});
+
+/** Einmal-Codes für die Anmeldung per E-Mail (10 min, max. 5 Versuche). Gespeichert wird nur ein Hash. */
+export const loginCodes = pgTable(
+  "login_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: ts("expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("login_codes_email_idx").on(t.email)],
 );
 
 /** Links zum Zurücksetzen des Passworts (1 h gültig, einmalig). Gespeichert wird nur der SHA-256-Hash. */

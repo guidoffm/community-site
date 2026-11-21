@@ -4,6 +4,7 @@ import { formatShort } from "@/lib/dates";
 import { listCommunities } from "@/services/communities";
 import { upcomingForUser } from "@/services/events";
 import { unreadCount } from "@/services/messages";
+import { listPasskeys } from "@/services/passkeys";
 import { CommunityGrid } from "@/components/community-grid";
 import { Blobs, DateBadge } from "@/components/decor";
 
@@ -58,11 +59,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     );
   }
 
-  const [events, unread] = await Promise.all([upcomingForUser(actor), unreadCount(actor)]);
+  const [events, unread, pks] = await Promise.all([upcomingForUser(actor), unreadCount(actor), listPasskeys(actor.userId)]);
   const mine = all.filter((c) => c.isMember);
 
   return (
     <div className="space-y-10">
+      {pks.length === 0 && (
+        <a href="/account" className="card card-hover flex items-center gap-4 border-brand/30 bg-brand-light/40">
+          <span className="text-3xl">🔐</span>
+          <span className="flex-1">
+            <span className="block font-bold">Richte einen Passkey ein</span>
+            <span className="text-sm text-slate-600">Künftig per Fingerabdruck oder Gesichtserkennung anmelden – ohne Passwort.</span>
+          </span>
+          <span className="font-semibold text-brand">Einrichten →</span>
+        </a>
+      )}
       {passwordReset && <p className="alert-success">🔑 Dein neues Passwort ist gespeichert – du bist angemeldet.</p>}
       {welcome && <p className="alert-success">🎉 Deine E-Mail-Adresse ist bestätigt – willkommen bei {APP_NAME}!</p>}
       <section className="relative isolate overflow-hidden rounded-3xl bg-gradient-brand p-6 text-white shadow-lg shadow-pop/20 sm:p-8">

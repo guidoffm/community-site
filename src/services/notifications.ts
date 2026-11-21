@@ -235,3 +235,24 @@ export async function notifyPasswordReset(tx: Tx, user: Recipient, token: string
     tx,
   );
 }
+
+export async function notifyLoginCode(tx: Tx, user: Recipient, code: string) {
+  const spaced = `${code.slice(0, 3)} ${code.slice(3)}`;
+  await enqueueMails(
+    [
+      {
+        to: { email: user.email, name: user.name },
+        subject: `${spaced} ist dein Anmeldecode für ${APP_NAME}`,
+        text: `Hallo ${user.name},\n\ndein Anmeldecode lautet: ${spaced}\n\nEr ist 10 Minuten gültig. Du hast keinen Code angefordert? Dann ignoriere diese E-Mail.\n\nTipp: Mit einem Passkey (unter „Mein Konto“) meldest du dich künftig ganz ohne Code an.\n`,
+        html: layout(
+          "Dein Anmeldecode",
+          `<p>Hallo ${escapeHtml(user.name)}, gib diesen Code auf der Anmeldeseite ein:</p>
+           <p style="font-size:32px;font-weight:800;letter-spacing:6px;background:#f3e8ff;color:#5b21b6;padding:16px 24px;border-radius:12px;display:inline-block">${spaced}</p>
+           <p style="color:#64748b;font-size:14px">Der Code ist 10 Minuten gültig. Du hast keinen Code angefordert? Dann ignoriere diese E-Mail.</p>`,
+          { label: `Zu ${APP_NAME}`, url: siteUrl("/login") },
+        ),
+      },
+    ],
+    tx,
+  );
+}

@@ -16,7 +16,7 @@ export async function deleteAccount(actor: Actor, password: string, ip: string) 
   if (wait) throw new AppError("FORBIDDEN", `Zu viele Fehlversuche. Bitte in ${wait} Minuten erneut versuchen.`);
   const user = await db().query.users.findFirst({ where: eq(t.users.id, actor.userId) });
   if (!user) throw notFound("Konto");
-  if (!(await verifyPassword(password, user.passwordHash))) {
+  if (user.passwordHash.startsWith("$2") && !(await verifyPassword(password, user.passwordHash))) {
     await recordFailure(key, `delete-account:ip:${ip}`);
     throw new AppError("UNAUTHORIZED", "Das Passwort ist falsch.");
   }

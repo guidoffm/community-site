@@ -69,3 +69,15 @@ export async function requireActor(): Promise<Actor> {
   if (!a) redirect(siteUrl(`/login?next=${encodeURIComponent(await currentUrl())}`));
   return a;
 }
+
+// ---------------------------------------------------------------- WebAuthn-Challenge (ID im kurzlebigen Cookie)
+const WA_COOKIE = "c15k_wa";
+export async function setChallengeCookie(id: string) {
+  (await cookies()).set(WA_COOKIE, id, { httpOnly: true, sameSite: "strict", secure: env.secureCookies(), path: "/", maxAge: 300 });
+}
+export async function takeChallengeCookie() {
+  const jar = await cookies();
+  const v = jar.get(WA_COOKIE)?.value;
+  jar.set(WA_COOKIE, "", { httpOnly: true, sameSite: "strict", secure: env.secureCookies(), path: "/", maxAge: 0 });
+  return v;
+}

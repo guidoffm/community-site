@@ -8,6 +8,7 @@ Plattform für Personengruppen: Communities anlegen und beitreten, Mitglieder an
 - **Events** mit Titel, Beschreibung, Ort und Datum; alle Mitglieder werden per E-Mail informiert (inkl. `.ics`-Anhang), Anmeldung zur Teilnahme mit Bestätigungsmail und `.ics` (Abmeldung entfernt den Kalendereintrag), Karten-Link zum Ort, Erinnerungen 3 Tage, 1 Tag und 4 Stunden vorher (Job `event-reminders`), Organisator sieht Teilnehmerliste, Download als `.ics`, Absage mit Benachrichtigung
 - **Event-Fotos:** nach Beginn des Events können Teilnehmer Fotos hochladen; sichtbar nur für Teilnehmer
 - **Rechtliches:** Impressum und Datenschutzerklärung der Betreiberin (Altiros GmbH) in jeder Fußzeile, bei der Registrierung und in jeder E-Mail
+- **Anmeldung:** bevorzugt per Passkey (WebAuthn, RP `15k.de`), alternativ Einmal-Code per E-Mail (10 min), Passwort optional
 - **Passwort vergessen:** Link per E-Mail (1 h gültig, einmalig); Passwort ändern unter „Mein Konto“
 - **Mein Konto** (`/account`): Konto mit Passwort löschen – persönliche Daten werden entfernt, anstehende eigene Events abgesagt, vergangene bleiben als „Gelöschter Benutzer“ erhalten
 - **Homepage** je Mitglied mit Text und Bildergalerie, sichtbar für Mitglieder gemeinsamer Communities oder öffentlich

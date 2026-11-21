@@ -13,6 +13,7 @@ Architektur wie `simple-erp` (Next.js standalone, Drizzle/pg, eigene Sessions, S
 - Registrierung: Konto ist bis zur E-Mail-Bestätigung gesperrt (`users.email_verified_at`), Mitgliedschaften erst nach Bestätigung (`email_verifications.community_ids`). Bestätigung per POST-Button (`/verify`), nicht per GET – Mail-Scanner öffnen Links vorab. Job `unverified-cleanup` löscht nach 24 h.
 - Rollen: Site-Admin (`users.is_site_admin`) darf Communities anlegen; Vergabe nur über `SITE_ADMIN_EMAILS` (Cluster-ConfigMap, nicht im Code – keine personenbezogenen Daten im öffentlichen Repo). Community-Rollen `admin`/`member` in `memberships`.
 - Konto löschen (`src/services/account.ts`): vergangene Events gehen an das Platzhalter-Konto `DELETED_USER_ID` („Gelöschter Benutzer“, per Migration angelegt, kein Login) – nie löschen oder als echten Nutzer behandeln.
+- Anmeldung: Passkey zuerst (`src/services/passkeys.ts`, @simplewebauthn v13, RP-ID = ROOT_DOMAIN ohne Port, Challenge in `auth_challenges` + Cookie `c15k_wa`), dann E-Mail-Code (`login_codes`, Hash mit SESSION_SECRET, 5 Versuche), Passwort optional (`password_hash = "!"` = keins).
 - Mehrere Replikas: Start-Migration und Jobs über Advisory-Locks (`withAdvisoryLock`), Rate-Limits in `rate_limit_hits`.
 - Image nur `linux/arm64` mit lokalem Docker (`./docker-build.sh`). Deployment: `~/src/argocd/community-site`.
 - Tests: `npm run smoke` gegen die Dev-DB (`npm run dev:db`).

@@ -4,7 +4,7 @@ import { clientIp } from "@/lib/auth/client-ip";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { safeRedirectTarget, siteUrl } from "@/lib/domains";
 import { run, type ActionState } from "@/lib/forms";
-import { authenticate, changePassword as changePasswordService, register as registerUser, requestPasswordReset, resetPassword, verifyEmail } from "@/services/users";
+import { authenticate, changePassword as changePasswordService, register as registerUser, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "@/services/users";
 import { deleteAccount as deleteAccountService } from "@/services/account";
 import { requireActor } from "@/lib/auth/session";
 
@@ -82,5 +82,22 @@ export async function changePassword(_: ActionState, fd: FormData): Promise<Acti
     await changePasswordService(actor.userId, String(fd.get("current") ?? ""), fd.get("password"));
     await createSession(actor.userId); // diese Sitzung bleibt gültig, alle anderen nicht
     return "Passwort geändert. Auf anderen Geräten musst du dich neu anmelden.";
+  });
+}
+
+export async function sendLoginCode(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const email = String(fd.get("email") ?? "").trim();
+    await requestLoginCode(email, await clientIp());
+    // gleiche Antwort, ob es das Konto gibt oder nicht
+    return { ok: "Falls ein Konto mit dieser Adresse existiert, haben wir dir einen 6-stelligen Code geschickt (10 Minuten gültig).", data: { email } };
+  });
+}
+
+export async function loginWithCode(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const user = await verifyLoginCode(String(fd.get("email") ?? ""), String(fd.get("code") ?? ""), await clientIp());
+    await createSession(user.id);
+    redirect(safeRedirectTarget(fd.get("next")));
   });
 }

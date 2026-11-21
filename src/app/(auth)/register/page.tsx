@@ -30,8 +30,11 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           <span className="mt-1 block text-xs text-slate-500">An diese Adresse schicken wir Benachrichtigungen über neue Nachrichten und Events.</span>
         </label>
         <label className="block">
-          <span className="label">Passwort (mind. 8 Zeichen)</span>
-          <input name="password" type="password" required minLength={8} autoComplete="new-password" className="input" />
+          <span className="label">Passwort (optional, mind. 8 Zeichen)</span>
+          <input name="password" type="password" minLength={8} autoComplete="new-password" className="input" />
+          <span className="mt-1 block text-xs text-slate-500">
+            Ohne Passwort meldest du dich per Passkey oder mit einem Code per E-Mail an – den Passkey richtest du nach der Bestätigung ein.
+          </span>
         </label>
         {communities.length > 0 && (
           <fieldset>
