@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 import { siteUrl } from "@/lib/domains";
 
+// zur Laufzeit erzeugen (APP_URL kommt aus der Umgebung, nicht vom Build)
+export const dynamic = "force-dynamic";
+
 /** Gilt für www.15k.de und alle Community-Subdomains (gleicher Inhalt). */
 export default function robots(): MetadataRoute.Robots {
   return {
