@@ -6,7 +6,7 @@ import { AppError, forbidden, notFound } from "@/lib/errors";
 import { parseLocalDateTime } from "@/lib/dates";
 import { buildIcs, eventUrl } from "@/lib/ics";
 import { communityContext } from "./communities";
-import { notifyEventCancelled, notifyNewEvent } from "./notifications";
+import { notifyEventCancelled, notifyNewEvent, notifyRegistration } from "./notifications";
 import { deleteScheduled, scheduleImageDeletion } from "./storage-cleanup";
 
 /** Event hat begonnen → Fotos dürfen hochgeladen werden, Anmeldung ist geschlossen. */
@@ -26,6 +26,13 @@ const createInput = z.object({
   title: z.string().trim().min(3, "Der Titel muss mindestens 3 Zeichen lang sein.").max(150),
   description: z.string().trim().min(1, "Bitte beschreibe das Event.").max(10000),
   location: z.string().trim().min(2, "Bitte gib einen Ort an.").max(300),
+  mapUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => /^https?:\/\/\S+$/i.test(v), "Der Karten-Link muss mit http:// oder https:// beginnen.")
+    .nullable()
+    .optional(),
   startsAt: z.string(),
   endsAt: z.string().nullable().optional(),
 });
@@ -43,7 +50,7 @@ export async function createEvent(actor: Actor, slug: string, input: unknown) {
   return db().transaction(async (tx) => {
     const [event] = await tx
       .insert(t.events)
-      .values({ communityId: community.id, organizerId: actor.userId, title: data.title, description: data.description, location: data.location, startsAt, endsAt })
+      .values({ communityId: community.id, organizerId: actor.userId, title: data.title, description: data.description, location: data.location, mapUrl: data.mapUrl || null, startsAt, endsAt })
       .returning();
     const recipients = await tx
       .select({ email: t.users.email, name: t.users.name })
@@ -129,13 +136,24 @@ export async function getEvent(actor: Actor, slug: string, eventId: string) {
 }
 
 export async function setRegistration(actor: Actor, slug: string, eventId: string, register: boolean) {
-  const { event, started } = await getEvent(actor, slug, eventId);
+  const { event, started, community, organizer } = await getEvent(actor, slug, eventId);
   if (started) throw new AppError("CONFLICT", "Das Event hat bereits begonnen.");
-  if (register) {
-    await db().insert(t.eventRegistrations).values({ eventId: event.id, userId: actor.userId }).onConflictDoNothing();
-  } else {
-    await db().delete(t.eventRegistrations).where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, actor.userId)));
-  }
+  await db().transaction(async (tx) => {
+    const changed = register
+      ? await tx.insert(t.eventRegistrations).values({ eventId: event.id, userId: actor.userId }).onConflictDoNothing().returning()
+      : await tx
+          .delete(t.eventRegistrations)
+          .where(and(eq(t.eventRegistrations.eventId, event.id), eq(t.eventRegistrations.userId, actor.userId)))
+          .returning();
+    // Bestätigung nur bei tatsächlicher Änderung (kein Doppelversand bei Doppelklick)
+    if (changed.length)
+      await notifyRegistration(
+        tx,
+        { ...event, organizerName: organizer.name, communityName: community.title, communitySlug: community.slug },
+        { email: actor.email, name: actor.name },
+        register,
+      );
+  });
 }
 
 /** Organisator sagt ab (zukünftig: Teilnehmer werden informiert) bzw. löscht ein vergangenes Event samt Fotos. */

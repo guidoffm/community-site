@@ -1,7 +1,7 @@
 // Smoke-Test der Fachlogik gegen die laufende Dev-DB (und S3, falls konfiguriert):
 //   npm run smoke
 import sharp from "sharp";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, t } from "../src/db";
 import { DELETED_USER_ID } from "../src/db/schema";
 import { authenticate, deleteUnverifiedUsers, peekVerification, register, verifyEmail } from "../src/services/users";
@@ -100,6 +100,19 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const local = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T19:00`;
 const ev = await createEvent(a, "ossis", { title: "Stammtisch", description: "Wir treffen uns.", location: "Leipzig", startsAt: local, endsAt: null });
 await setRegistration(b, "ossis", ev.id, true);
+await setRegistration(b, "ossis", ev.id, true); // Doppelklick → keine zweite Mail
+const regMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, b.email), eq(t.mailOutbox.subject, "Teilnahme bestätigt: Stammtisch")));
+ok(regMails.length === 1 && regMails[0].attachments?.[0]?.filename === "event.ics", "Anmeldebestätigung mit ICS (genau einmal)");
+const regIcs = Buffer.from(regMails[0].attachments![0].contentBase64, "base64").toString().replace(/\r\n /g, "");
+ok(regIcs.includes("Karte: https://www.google.com/maps/search/") && regMails[0].text.includes("Karte: "), "Karten-Link in Mail und ICS");
+await setRegistration(b, "ossis", ev.id, false);
+const offMails = await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, b.email), eq(t.mailOutbox.subject, "Abgemeldet: Stammtisch")));
+ok(offMails.length === 1 && Buffer.from(offMails[0].attachments![0].contentBase64, "base64").toString().includes("METHOD:CANCEL"), "Abmeldung mit Absage-ICS");
+await setRegistration(b, "ossis", ev.id, true);
+const evMap = await createEvent(a, "ossis", { title: "Mit Karte", description: "x", location: "Leipzig", mapUrl: "https://www.openstreetmap.org/#map=12/51.34/12.37", startsAt: local, endsAt: null });
+ok(evMap.mapUrl === "https://www.openstreetmap.org/#map=12/51.34/12.37", "eigener Karten-Link wird gespeichert");
+await createEvent(a, "ossis", { title: "Kaputt", description: "x", location: "Leipzig", mapUrl: "javascript:alert(1)", startsAt: local, endsAt: null }).then(() => ok(false, "js-Link"), () => ok(true, "unsicherer Karten-Link abgelehnt"));
+await db().delete(t.events).where(eq(t.events.id, evMap.id));
 const evA = await getEvent(a, "ossis", ev.id);
 ok(evA.registrationCount === 1 && evA.registrations[0].name === "Bernd Test", "Organisator sieht Anmeldung mit Namen");
 ok((await getEvent(b, "ossis", ev.id)).registrations.length === 0, "Teilnehmer sehen keine Namensliste");

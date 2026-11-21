@@ -104,6 +104,8 @@ export const events = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     location: text("location").notNull(),
+    /** Optionaler Karten-Link (Google Maps, OpenStreetMap …); leer = automatisch aus dem Ort */
+    mapUrl: text("map_url"),
     startsAt: ts("starts_at").notNull(),
     endsAt: ts("ends_at"),
     ...timestamps,

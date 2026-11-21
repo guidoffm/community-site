@@ -4,6 +4,7 @@ import { requireActor } from "@/lib/auth/session";
 import { communityUrl } from "@/lib/domains";
 import { orNotFound } from "@/lib/errors";
 import { communityContext } from "@/services/communities";
+import { LocationField } from "./location-field";
 
 export const metadata = { title: "Event organisieren" };
 
@@ -26,10 +27,7 @@ export default async function NewEventPage({ params }: { params: Promise<{ slug:
           <span className="label">Beschreibung *</span>
           <textarea name="description" required rows={6} maxLength={10000} className="input" />
         </label>
-        <label className="block">
-          <span className="label">Ort *</span>
-          <input name="location" required maxLength={300} placeholder="z. B. Gaststätte Zum Anker, Hauptstraße 1, 12345 Musterstadt" className="input" />
-        </label>
+        <LocationField />
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="label">Beginn *</span>

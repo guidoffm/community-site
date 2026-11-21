@@ -1,10 +1,12 @@
 import { APP_NAME, MAIN_HOST, communityUrl } from "./domains"
+import { eventMapUrl } from "./maps"
 
 type IcsEvent = {
   id: string
   title: string
   description: string
   location: string
+  mapUrl?: string | null
   startsAt: Date
   endsAt: Date | null
   updatedAt: Date
@@ -55,7 +57,7 @@ export function buildIcs(event: IcsEvent, method: "PUBLISH" | "CANCEL" = "PUBLIS
     `DTSTART:${utc(event.startsAt)}`,
     ...(event.endsAt ? [`DTEND:${utc(event.endsAt)}`] : []),
     `SUMMARY:${esc(event.title)}`,
-    `DESCRIPTION:${esc(`${event.description}\n\n${event.url}`)}`,
+    `DESCRIPTION:${esc(`${event.description}\n\nOrt: ${event.location}\nKarte: ${eventMapUrl(event)}\n\n${event.url}`)}`,
     `LOCATION:${esc(event.location)}`,
     `URL:${event.url}`,
     ...(method === "CANCEL" ? ["STATUS:CANCELLED"] : ["STATUS:CONFIRMED"]),

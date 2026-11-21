@@ -11,6 +11,7 @@ import { deleteImage } from "@/app/actions/homepage";
 import { ImageGallery } from "@/components/image-gallery";
 import { Avatar, DateBadge } from "@/components/decor";
 import { communityColors } from "@/lib/colors";
+import { eventMapUrl } from "@/lib/maps";
 import { ImageUploadForm, UploadFeedback } from "@/components/image-upload-form";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export default async function EventPage({
           <dt className="text-slate-500">Wo</dt>
           <dd>
             {event.location}{" "}
-            <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(event.location)}`} target="_blank" rel="noreferrer" className="link">(Karte)</a>
+            <a href={eventMapUrl(event)} target="_blank" rel="noreferrer" className="link">🗺️ Karte öffnen</a>
           </dd>
           <dt className="text-slate-500">Organisiert von</dt>
           <dd>{d.organizer.name}</dd>

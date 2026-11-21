@@ -4,6 +4,7 @@ import { APP_NAME, APP_URL, communityUrl, siteUrl } from "@/lib/domains";
 import { formatEventRange } from "@/lib/dates";
 import { buildIcs, eventUrl } from "@/lib/ics";
 import { escapeHtml, teaser } from "@/lib/utils";
+import { eventMapUrl } from "@/lib/maps";
 import { enqueueMails, type OutgoingMail } from "./outbox";
 import type { Db } from "@/db";
 
@@ -48,6 +49,7 @@ type EventInfo = {
   title: string;
   description: string;
   location: string;
+  mapUrl: string | null;
   startsAt: Date;
   endsAt: Date | null;
   updatedAt: Date;
@@ -56,6 +58,51 @@ type EventInfo = {
   communitySlug: string;
 };
 
+function whereRow(e: { location: string; mapUrl: string | null }) {
+  return `<tr><td style="padding:4px 16px 4px 0;color:#64748b">Wo</td><td>${escapeHtml(e.location)} · <a href="${escapeHtml(eventMapUrl(e))}" style="color:#7c3aed">Karte öffnen</a></td></tr>`;
+}
+
+/** Bestätigung an Teilnehmer: Anmeldung (mit ICS) bzw. Abmeldung (mit Absage-ICS, entfernt den Kalendereintrag). */
+export async function notifyRegistration(tx: Tx, e: EventInfo, user: Recipient, registered: boolean) {
+  const url = eventUrl(e.communitySlug, e.id);
+  const when = formatEventRange(e.startsAt, e.endsAt);
+  const ics = Buffer.from(registered ? buildIcs({ ...e, url }) : buildIcs({ ...e, updatedAt: new Date(), url }, "CANCEL"));
+  await enqueueMails(
+    [
+      registered
+        ? {
+            to: { email: user.email, name: user.name },
+            subject: `Teilnahme bestätigt: ${e.title}`,
+            text: `Hallo ${user.name},\n\ndu bist für „${e.title}“ in ${e.communityName} angemeldet.\n\nWann: ${when}\nWo: ${e.location}\nKarte: ${eventMapUrl(e)}\n\nDetails: ${url}\n\nDen Termin für deinen Kalender findest du im Anhang (event.ics).\n`,
+            html: layout(
+              `Du bist dabei: ${e.title}`,
+              `<p>Hallo ${escapeHtml(user.name)}, deine Teilnahme ist bestätigt.</p>
+               <table style="border-collapse:collapse">
+                 <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wann</td><td>${escapeHtml(when)}</td></tr>
+                 ${whereRow(e)}
+               </table>
+               <p style="color:#64748b;font-size:14px">Den Termin für deinen Kalender findest du im Anhang (event.ics).</p>`,
+              { label: "Zum Event", url },
+            ),
+            attachments: [{ filename: "event.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: ics }],
+          }
+        : {
+            to: { email: user.email, name: user.name },
+            subject: `Abgemeldet: ${e.title}`,
+            text: `Hallo ${user.name},\n\ndu hast dich von „${e.title}“ (${when}) abgemeldet. Mit der angehängten Datei entfernst du den Termin aus deinem Kalender.\n\n${url}\n`,
+            html: layout(
+              `Abgemeldet: ${e.title}`,
+              `<p>Hallo ${escapeHtml(user.name)}, du hast dich von <strong>${escapeHtml(e.title)}</strong> (${escapeHtml(when)}) abgemeldet.</p>
+               <p style="color:#64748b;font-size:14px">Mit der angehängten Datei (absage.ics) entfernst du den Termin aus deinem Kalender.</p>`,
+              { label: "Zum Event", url },
+            ),
+            attachments: [{ filename: "absage.ics", contentType: "text/calendar; charset=utf-8; method=CANCEL", content: ics }],
+          },
+    ],
+    tx,
+  );
+}
+
 export async function notifyNewEvent(tx: Tx, e: EventInfo, recipients: Recipient[]) {
   const url = eventUrl(e.communitySlug, e.id);
   const ics = Buffer.from(buildIcs({ ...e, url }));
@@ -63,13 +110,13 @@ export async function notifyNewEvent(tx: Tx, e: EventInfo, recipients: Recipient
   await enqueueMails(
     each(recipients, {
       subject: `Neues Event in ${e.communityName}: ${e.title}`,
-      text: `${e.organizerName} hat in „${e.communityName}“ ein neues Event erstellt.\n\n${e.title}\nWann: ${when}\nWo: ${e.location}\n\n${teaser(e.description, 400)}\n\nDetails ansehen und teilnehmen:\n${url}\n\nDen Termin für deinen Kalender findest du im Anhang (event.ics).\n`,
+      text: `${e.organizerName} hat in „${e.communityName}“ ein neues Event erstellt.\n\n${e.title}\nWann: ${when}\nWo: ${e.location}\nKarte: ${eventMapUrl(e)}\n\n${teaser(e.description, 400)}\n\nDetails ansehen und teilnehmen:\n${url}\n\nDen Termin für deinen Kalender findest du im Anhang (event.ics).\n`,
       html: layout(
         e.title,
         `<p>${escapeHtml(e.organizerName)} hat in <strong>${escapeHtml(e.communityName)}</strong> ein neues Event erstellt.</p>
          <table style="border-collapse:collapse">
            <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wann</td><td>${escapeHtml(when)}</td></tr>
-           <tr><td style="padding:4px 16px 4px 0;color:#64748b">Wo</td><td>${escapeHtml(e.location)}</td></tr>
+           ${whereRow(e)}
          </table>
          <p>${escapeHtml(teaser(e.description))}</p>
          <p style="color:#64748b;font-size:14px">Den Termin für deinen Kalender findest du im Anhang (event.ics).</p>`,
