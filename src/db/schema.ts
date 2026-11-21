@@ -27,6 +27,12 @@ export const users = pgTable("users", {
   emailVerifiedAt: ts("email_verified_at"),
   /** Site-Admin: darf Communities anlegen. Vergabe über SITE_ADMIN_EMAILS (beim Start bzw. bei E-Mail-Bestätigung). */
   isSiteAdmin: boolean("is_site_admin").notNull().default(false),
+  /** Zustimmung zu den Nutzungsbedingungen (Fassung siehe src/lib/terms.ts) */
+  termsAcceptedAt: ts("terms_accepted_at"),
+  termsVersion: text("terms_version"),
+  /** Gesperrt durch Site-Admin (Meldeverfahren) – keine Anmeldung möglich */
+  blockedAt: ts("blocked_at"),
+  blockedReason: text("blocked_reason"),
   ...timestamps,
 });
 
@@ -236,6 +242,30 @@ export const storageDeletions = pgTable("storage_deletions", {
   key: text("key").primaryKey(),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------- Meldungen (DSA Art. 16)
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** message | image | homepage | event | community */
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    /** Kurzbeschreibung des gemeldeten Inhalts zum Zeitpunkt der Meldung (bleibt nach Entfernen erhalten) */
+    targetLabel: text("target_label").notNull(),
+    reason: text("reason").notNull(),
+    details: text("details").notNull(),
+    reporterId: uuid("reporter_id").references(() => users.id, { onDelete: "set null" }),
+    reporterName: text("reporter_name"),
+    reporterEmail: text("reporter_email"),
+    status: text("status").notNull().default("open"), // open | removed | blocked | dismissed
+    decisionNote: text("decision_note"),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: ts("decided_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("reports_status_idx").on(t.status, t.createdAt), index("reports_target_idx").on(t.targetType, t.targetId)],
+);
 
 // ---------------------------------------------------------------- Mail-Outbox
 /** Fertig gerenderte Mails; der Worker verschickt sie (mehrere Replikas: FOR UPDATE SKIP LOCKED). */

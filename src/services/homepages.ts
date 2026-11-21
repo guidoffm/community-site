@@ -53,10 +53,15 @@ export async function saveHomepage(actor: Actor, input: unknown) {
 }
 
 export async function deleteHomepage(actor: Actor) {
+  await removeHomepage(actor.userId);
+}
+
+/** Homepage samt Bildern entfernen (ohne Rechteprüfung – Aufrufer prüft). */
+export async function removeHomepage(userId: string) {
   const keys = await db().transaction(async (tx) => {
-    const imgs = await tx.select({ id: t.images.id }).from(t.images).where(eq(t.images.homepageUserId, actor.userId));
+    const imgs = await tx.select({ id: t.images.id }).from(t.images).where(eq(t.images.homepageUserId, userId));
     const keys = await scheduleImageDeletion(tx, imgs.map((i) => i.id));
-    await tx.delete(t.homepages).where(eq(t.homepages.userId, actor.userId));
+    await tx.delete(t.homepages).where(eq(t.homepages.userId, userId));
     return keys;
   });
   await deleteScheduled(keys);

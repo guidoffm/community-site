@@ -161,19 +161,30 @@ export async function setRegistration(actor: Actor, slug: string, eventId: strin
 
 /** Organisator sagt ab (zukünftig: Teilnehmer werden informiert) bzw. löscht ein vergangenes Event samt Fotos. */
 export async function cancelEvent(actor: Actor, slug: string, eventId: string) {
-  const { event, community, isOrganizer, started } = await getEvent(actor, slug, eventId);
+  const { event, isOrganizer } = await getEvent(actor, slug, eventId);
   if (!isOrganizer) throw forbidden("Nur der Organisator kann das Event absagen.");
+  await removeEvent(event.id, actor.name);
+}
 
+/**
+ * Event samt Fotos entfernen (ohne Rechteprüfung – Aufrufer prüft). Bei anstehenden Events werden die
+ * Angemeldeten über die Absage informiert.
+ */
+export async function removeEvent(eventId: string, cancelledByName: string) {
+  const event = await db().query.events.findFirst({ where: eq(t.events.id, eventId) });
+  if (!event) throw notFound("Event");
+  const community = await db().query.communities.findFirst({ where: eq(t.communities.id, event.communityId) });
+  const started = eventHasStarted(event);
   const keys = await db().transaction(async (tx) => {
     const photos = await tx.select({ id: t.images.id }).from(t.images).where(eq(t.images.eventId, event.id));
     const keys = await scheduleImageDeletion(tx, photos.map((p) => p.id));
-    if (!started) {
+    if (!started && community) {
       const recipients = await tx
         .select({ email: t.users.email, name: t.users.name })
         .from(t.eventRegistrations)
         .innerJoin(t.users, eq(t.users.id, t.eventRegistrations.userId))
-        .where(and(eq(t.eventRegistrations.eventId, event.id), ne(t.eventRegistrations.userId, actor.userId)));
-      await notifyEventCancelled(tx, { ...event, organizerName: actor.name, communityName: community.title, communitySlug: community.slug }, recipients);
+        .where(and(eq(t.eventRegistrations.eventId, event.id), ne(t.eventRegistrations.userId, event.organizerId)));
+      await notifyEventCancelled(tx, { ...event, organizerName: cancelledByName, communityName: community.title, communitySlug: community.slug }, recipients);
     }
     await tx.delete(t.events).where(eq(t.events.id, event.id));
     return keys;

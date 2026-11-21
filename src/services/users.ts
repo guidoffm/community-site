@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, t } from "@/db";
 import { DELETED_USER_ID } from "@/db/schema";
 import { env } from "@/lib/env";
+import { MIN_AGE, TERMS_VERSION } from "@/lib/terms";
 import { AppError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { blockedFor, clearFailures, recordFailure } from "@/lib/auth/rate-limit";
@@ -24,6 +25,8 @@ const registerInput = z.object({
   password: z.union([z.literal(""), z.string().min(8, "Das Passwort muss mindestens 8 Zeichen lang sein.").max(200)]).nullable().optional(),
   communityIds: z.array(z.uuid()).default([]),
   next: z.string().max(500).nullable().optional(),
+  acceptTerms: z.literal(true, { error: "Bitte stimme den Nutzungsbedingungen zu." }),
+  ageConfirmed: z.literal(true, { error: `Die Nutzung ist erst ab ${MIN_AGE} Jahren erlaubt.` }),
 });
 
 /**
@@ -45,7 +48,13 @@ export async function register(input: unknown, ip: string) {
     const existing = await tx.query.users.findFirst({ where: eq(t.users.email, data.email) });
     if (existing?.emailVerifiedAt) throw new AppError("CONFLICT", "Für diese E-Mail-Adresse existiert bereits ein Konto.");
 
-    const values = { name: data.name, email: data.email, passwordHash: data.password ? await hashPassword(data.password) : NO_PASSWORD };
+    const values = {
+      name: data.name,
+      email: data.email,
+      passwordHash: data.password ? await hashPassword(data.password) : NO_PASSWORD,
+      termsAcceptedAt: new Date(),
+      termsVersion: TERMS_VERSION,
+    };
     const [user] = existing
       ? await tx.update(t.users).set({ ...values, createdAt: new Date() }).where(eq(t.users.id, existing.id)).returning()
       : await tx.insert(t.users).values(values).returning();
@@ -125,6 +134,7 @@ export async function authenticate(emailRaw: string, password: string, ip: strin
     await recordFailure(...keys);
     throw new AppError("UNAUTHORIZED", "E-Mail oder Passwort ist falsch.");
   }
+  if (user.blockedAt) throw new AppError("FORBIDDEN", "Dieses Konto ist gesperrt. Bei Fragen: mail@altiros.de");
   if (!user.emailVerifiedAt)
     throw new AppError(
       "FORBIDDEN",
@@ -264,5 +274,10 @@ export async function verifyLoginCode(emailRaw: string, codeRaw: string, ip: str
   await db().delete(t.loginCodes).where(eq(t.loginCodes.email, email));
   const user = await db().query.users.findFirst({ where: eq(t.users.email, email) });
   if (!user?.emailVerifiedAt) throw new AppError("UNAUTHORIZED", "Konto nicht aktiv.");
+  if (user.blockedAt) throw new AppError("FORBIDDEN", "Dieses Konto ist gesperrt. Bei Fragen: mail@altiros.de");
   return user;
+}
+
+export async function acceptTerms(userId: string) {
+  await db().update(t.users).set({ termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION }).where(eq(t.users.id, userId));
 }

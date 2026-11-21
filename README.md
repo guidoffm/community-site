@@ -7,6 +7,7 @@ Plattform für Personengruppen: Communities anlegen und beitreten, Mitglieder an
 - **Nachrichten** innerhalb einer Community an alle oder ausgewählte Mitglieder, mit Antworten; Empfänger werden per E-Mail benachrichtigt (ohne Inhalt – gelesen wird auf der Website)
 - **Events** mit Titel, Beschreibung, Ort und Datum; alle Mitglieder werden per E-Mail informiert (inkl. `.ics`-Anhang), Anmeldung zur Teilnahme mit Bestätigungsmail und `.ics` (Abmeldung entfernt den Kalendereintrag), Karten-Link zum Ort, Erinnerungen 3 Tage, 1 Tag und 4 Stunden vorher (Job `event-reminders`), Organisator sieht Teilnehmerliste und bekommt bei jeder An-/Abmeldung eine E-Mail mit der aktuellen Zahl, Download als `.ics`, Absage mit Benachrichtigung
 - **Event-Fotos:** nach Beginn des Events können Teilnehmer Fotos hochladen; sichtbar nur für Teilnehmer
+- **Nutzungsbedingungen** (`/terms`, Zustimmung und Altersbestätigung ab 16 bei der Registrierung, Neuzustimmung bei neuer Fassung) und **Meldeverfahren nach DSA** („Melden“ an allen Inhalten, `/admin/reports` für Site-Admins: entfernen, Konto sperren, abweisen – mit Eingangsbestätigung, Entscheidung und Begründung per E-Mail)
 - **Rechtliches:** Impressum und Datenschutzerklärung der Betreiberin (Altiros GmbH) in jeder Fußzeile, bei der Registrierung und in jeder E-Mail
 - **Anmeldung:** bevorzugt per Passkey (WebAuthn, RP `15k.de`), alternativ Einmal-Code per E-Mail (10 min), Passwort optional
 - **Passwort vergessen:** Link per E-Mail (1 h gültig, einmalig); Passwort ändern unter „Mein Konto“

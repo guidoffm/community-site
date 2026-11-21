@@ -26,7 +26,9 @@ export const jobs: Record<string, JobDef> = {
         .where(and(inArray(t.mailOutbox.status, ["sent", "failed"]), lt(t.mailOutbox.createdAt, new Date(Date.now() - 30 * day))))
         .returning({ id: t.mailOutbox.id });
       const runs = await db().delete(t.jobRuns).where(lt(t.jobRuns.startedAt, new Date(Date.now() - 90 * day))).returning({ id: t.jobRuns.id });
-      return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, rateLimitHits: await purgeRateLimits() };
+      // entschiedene Meldungen (DSA) nach einem Jahr löschen
+      const reports = await db().delete(t.reports).where(and(sql`${t.reports.status} <> 'open'`, lt(t.reports.decidedAt, new Date(Date.now() - 365 * day)))).returning({ id: t.reports.id });
+      return { outboxDeleted: sent.length, jobRunsDeleted: runs.length, reportsDeleted: reports.length, rateLimitHits: await purgeRateLimits() };
     },
   },
   "event-reminders": {

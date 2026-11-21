@@ -127,5 +127,6 @@ export async function finishLogin(challengeId: string | undefined, response: Aut
     .where(eq(t.passkeys.id, pk.id));
   const user = await db().query.users.findFirst({ where: eq(t.users.id, pk.userId) });
   if (!user?.emailVerifiedAt) throw new AppError("UNAUTHORIZED", "Konto nicht aktiv.");
+  if (user.blockedAt) throw new AppError("FORBIDDEN", "Dieses Konto ist gesperrt. Bei Fragen: mail@altiros.de");
   return user;
 }

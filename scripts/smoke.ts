@@ -12,6 +12,7 @@ import { inbox, readMessage, replyToMessage, sendMessage, unreadCount } from "..
 import { eventPhotos, readImage, uploadImages, deleteImage } from "../src/services/images";
 import { saveHomepage, viewHomepage } from "../src/services/homepages";
 import { processOutbox } from "../src/services/outbox";
+import { createReport, decideReport, listReports } from "../src/services/reports";
 import { sendEventReminders } from "../src/services/reminders";
 import { deleteAccount } from "../src/services/account";
 import type { Actor } from "../src/lib/auth/session";
@@ -21,21 +22,21 @@ const ok = (cond: unknown, msg: string) => {
   console.log(`✓ ${msg}`);
 };
 const suffix = Date.now().toString(36);
-const actor = (u: { id: string; email: string; name: string }): Actor => ({ userId: u.id, email: u.email, name: u.name, isSiteAdmin: false });
+const actor = (u: { id: string; email: string; name: string }): Actor => ({ userId: u.id, email: u.email, name: u.name, isSiteAdmin: false, termsAccepted: true });
 
 const ossis = await getCommunity("ossis");
 ok(ossis.title === "Ossis", "Beispiel-Community Ossis existiert");
 
 // --- Registrierung mit E-Mail-Bestätigung
 const annaMail = `anna-${suffix}@example.org`;
-const first = await register({ name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
+const first = await register({ acceptTerms: true, ageConfirmed: true, name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
 ok(!first.user.emailVerifiedAt, "Registrierung legt unbestätigtes Konto an");
 const memberBefore = await db().select().from(t.memberships).where(eq(t.memberships.userId, first.user.id));
 ok(memberBefore.length === 0, "vor Bestätigung keine Community-Mitgliedschaft");
 await authenticate(annaMail, "geheim123", `smoke-${suffix}`).then(() => ok(false, "Login unbestätigt"), (e) => ok(/bestätige/.test(e.message), "Login vor Bestätigung gesperrt"));
 const mails = await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, annaMail));
 ok(mails.some((m) => m.subject.includes("bestätige") && m.text.includes("/verify?token=")), "Bestätigungsmail mit Link in der Outbox");
-const again = await register({ name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
+const again = await register({ acceptTerms: true, ageConfirmed: true, name: "Anna Test", email: annaMail, password: "geheim123", communityIds: [ossis.id] }, `smoke-${suffix}`);
 ok(again.user.id === first.user.id && !(await peekVerification(first.token)), "erneute Registrierung: neuer Link, alter ungültig");
 ok((await peekVerification(again.token))?.email === annaMail, "Bestätigungsseite erkennt gültigen Link");
 const verified = await verifyEmail(again.token);
@@ -43,23 +44,23 @@ ok(verified.user.emailVerifiedAt, "E-Mail bestätigt");
 await verifyEmail(again.token).then(() => ok(false, "Link zweimal"), () => ok(true, "Link nur einmal verwendbar"));
 ok((await db().select().from(t.memberships).where(eq(t.memberships.userId, first.user.id))).length === 1, "nach Bestätigung Mitglied bei Ossis");
 await authenticate(annaMail, "geheim123", `smoke-${suffix}`).then(() => ok(true, "Login nach Bestätigung möglich"));
-await register({ name: "X", email: annaMail, password: "geheim123" }, `smoke2-${suffix}`).then(() => ok(false, "doppelt"), () => ok(true, "bestätigte Adresse nicht erneut registrierbar"));
+await register({ acceptTerms: true, ageConfirmed: true, name: "X", email: annaMail, password: "geheim123" }, `smoke2-${suffix}`).then(() => ok(false, "doppelt"), () => ok(true, "bestätigte Adresse nicht erneut registrierbar"));
 
 // Unbestätigt + älter als 24 h → Job löscht
-const old = await register({ name: "Otto Alt", email: `otto-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
+const old = await register({ acceptTerms: true, ageConfirmed: true, name: "Otto Alt", email: `otto-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
 await db().update(t.users).set({ createdAt: new Date(Date.now() - 25 * 3_600_000) }).where(eq(t.users.id, old.user.id));
-const fresh = await register({ name: "Frieda Neu", email: `frieda-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
+const fresh = await register({ acceptTerms: true, ageConfirmed: true, name: "Frieda Neu", email: `frieda-${suffix}@example.org`, password: "geheim123" }, `smoke3-${suffix}`);
 const cleaned = await deleteUnverifiedUsers();
 const left = await db().select({ id: t.users.id }).from(t.users).where(sql`${t.users.id} in (${old.user.id}, ${fresh.user.id})`);
 ok(cleaned.usersDeleted >= 1 && left.length === 1 && left[0].id === fresh.user.id, "Job löscht nur unbestätigte Konten älter als 24 h");
 
 /** Registrieren + bestätigen (für die weiteren Tests) */
 const registerVerified = async (name: string, email: string, communityIds: string[] = []) => {
-  const r = await register({ name, email, password: "geheim123", communityIds }, `smoke-v-${suffix}`);
+  const r = await register({ acceptTerms: true, ageConfirmed: true, name, email, password: "geheim123", communityIds }, `smoke-v-${suffix}`);
   return (await verifyEmail(r.token)).user;
 };
 const registerVerifiedEarly = async (email: string) => {
-  const r = await register({ name: "Dora Fremd", email, password: "geheim123" }, `smoke-e-${suffix}`);
+  const r = await register({ acceptTerms: true, ageConfirmed: true, name: "Dora Fremd", email, password: "geheim123" }, `smoke-e-${suffix}`);
   return (await verifyEmail(r.token)).user;
 };
 const a = actor(verified.user);
@@ -175,7 +176,7 @@ await changePassword(b.userId, "neuesPasswort1", "geheim123");
 await authenticate(b.email, "geheim123", `smoke-pw3-${suffix}`).then(() => ok(true, "Passwort geändert"));
 
 // --- Ohne Passwort: Registrierung, E-Mail-Code, Passkey-Optionen
-const pwless = await register({ name: "Paula Passkey", email: `paula-${suffix}@example.org`, password: "", communityIds: [] }, `smoke-pl-${suffix}`);
+const pwless = await register({ acceptTerms: true, ageConfirmed: true, name: "Paula Passkey", email: `paula-${suffix}@example.org`, password: "", communityIds: [] }, `smoke-pl-${suffix}`);
 const paula = actor((await verifyEmail(pwless.token)).user);
 ok(pwless.user.passwordHash === "!", "Registrierung ohne Passwort möglich");
 await authenticate(paula.email, "!", `smoke-pl-${suffix}`).then(() => ok(false, "kein Passwort"), () => ok(true, "ohne Passwort kein Passwort-Login"));
@@ -228,6 +229,37 @@ ok((await remKinds()).filter((k) => k.endsWith(":4h")).length === 3, "4-Stunden-
 const remMail = (await db().select().from(t.mailOutbox).where(eq(t.mailOutbox.toEmail, b.email))).find((m) => m.subject === "Erinnerung: Erinnerungstest ist in 4 Stunden");
 ok(remMail && remMail.text.includes("Karte: "), "Erinnerungsmail mit Ort und Karten-Link");
 await db().delete(t.events).where(eq(t.events.id, remEv.id));
+
+// --- Nutzungsbedingungen & Meldeverfahren (DSA)
+await register({ name: "Ohne Zustimmung", email: `nozust-${suffix}@example.org`, password: "geheim123" }, `smoke-t-${suffix}`).then(() => ok(false, "ohne AGB"), (e) => ok(/Nutzungsbedingungen/.test(e.message), "Registrierung ohne Zustimmung abgelehnt"));
+await register({ acceptTerms: true, name: "Zu Jung", email: `jung-${suffix}@example.org`, password: "geheim123" }, `smoke-t-${suffix}`).then(() => ok(false, "ohne Alter"), (e) => ok(/16 Jahren/.test(e.message), "Registrierung ohne Altersbestätigung abgelehnt"));
+const admin = { ...a, isSiteAdmin: true };
+await db().update(t.users).set({ isSiteAdmin: true }).where(eq(t.users.id, a.userId));
+const bad = await sendMessage(e, "ossis", { subject: "Böse", body: "Beleidigender Text", mode: "selected", recipientIds: [b.userId] });
+await createReport(null, { targetType: "message", targetId: bad.id, reason: "illegal", details: "Das ist eine Beleidigung.", goodFaith: true }, `smoke-r-${suffix}`).then(() => ok(false, "anonym ohne Mail"), () => ok(true, "anonyme Meldung ohne Name/E-Mail abgelehnt"));
+const rep = await createReport(null, { targetType: "message", targetId: bad.id, reason: "illegal", details: "Das ist eine Beleidigung.", goodFaith: true, reporterName: "Rita Melder", reporterEmail: `rita-${suffix}@example.org` }, `smoke-r-${suffix}`);
+const rep2 = await createReport(b, { targetType: "message", targetId: bad.id, reason: "harassment", details: "Belästigt mich seit Tagen.", goodFaith: true }, `smoke-r2-${suffix}`);
+ok(rep.status === "open" && rep2.reporterEmail === b.email, "Meldungen anonym und angemeldet möglich");
+const mailsTo = async (email: string, like: string) => (await db().select().from(t.mailOutbox).where(and(eq(t.mailOutbox.toEmail, email), sql`${t.mailOutbox.subject} like ${like}`))).length;
+ok((await mailsTo(`rita-${suffix}@example.org`, "Deine Meldung ist eingegangen%")) === 1, "Eingangsbestätigung an Meldende");
+ok((await mailsTo(a.email, "Neue Meldung:%")) >= 2, "Site-Admins werden informiert");
+await listReports(b, "open").then(() => ok(false, "Nicht-Admin"), () => ok(true, "Meldungsliste nur für Site-Admins"));
+ok((await listReports(admin, "open")).some((r) => r.id === rep.id && r.target?.preview.includes("Beleidigender")), "Admin sieht gemeldeten Inhalt");
+const d1 = await decideReport(admin, rep.id, { action: "remove", note: "Beleidigung, Verstoß gegen Nr. 4 der Nutzungsbedingungen." });
+ok(d1.count === 2 && !(await db().query.messages.findFirst({ where: eq(t.messages.id, bad.id) })), "Inhalt entfernt, beide Meldungen entschieden");
+ok((await mailsTo(`rita-${suffix}@example.org`, "Entscheidung zu deiner Meldung%")) === 1 && (await mailsTo(b.email, "Entscheidung zu deiner Meldung%")) === 1, "Entscheidung an alle Meldenden");
+ok((await mailsTo(e.email, "Ein Inhalt von dir wurde entfernt")) === 1, "Begründung an Betroffene (Art. 17)");
+await decideReport(admin, rep.id, { action: "dismiss", note: "nochmal" }).then(() => ok(false, "doppelt"), () => ok(true, "Meldung nicht zweimal entscheidbar"));
+await saveHomepage(c, { title: "Carlas Seite", content: "harmlos", visibility: "public" });
+const rep3 = await createReport(b, { targetType: "homepage", targetId: c.userId, reason: "other", details: "Gefällt mir nicht so richtig.", goodFaith: true }, `smoke-r3-${suffix}`);
+await decideReport(admin, rep3.id, { action: "dismiss", note: "Kein Verstoß erkennbar." });
+ok((await viewHomepage(null, c.userId)).title === "Carlas Seite", "Abgewiesen: Inhalt bleibt");
+const bad2 = await sendMessage(e, "ossis", { subject: "Wieder", body: "Spam Spam Spam", mode: "selected", recipientIds: [b.userId] });
+const rep4 = await createReport(b, { targetType: "message", targetId: bad2.id, reason: "spam", details: "Wiederholter Spam vom selben Konto.", goodFaith: true }, `smoke-r4-${suffix}`);
+await decideReport(admin, rep4.id, { action: "block", note: "Wiederholte Verstöße." });
+await authenticate(e.email, "geheim123", `smoke-r5-${suffix}`).then(() => ok(false, "gesperrt"), (err) => ok(/gesperrt/.test(err.message), "gesperrtes Konto kann sich nicht anmelden"));
+ok((await mailsTo(e.email, "Dein Konto bei%gesperrt")) === 1, "Sperr-Begründung an Betroffene");
+await db().update(t.users).set({ isSiteAdmin: false }).where(eq(t.users.id, a.userId));
 
 // --- Konto löschen
 const del = actor(await registerVerified("Gustav Weg", `gustav-${suffix}@example.org`, [ossis.id]));

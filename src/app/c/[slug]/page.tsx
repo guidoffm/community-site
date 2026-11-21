@@ -70,6 +70,9 @@ export default async function CommunityPage({ params, searchParams }: { params: 
           </div>
         </div>
         {community.description && <p className="whitespace-pre-line border-t border-violet-50 px-5 py-4 text-slate-600 sm:px-6">{community.description}</p>}
+        <p className="px-5 pb-3 text-right text-xs sm:px-6">
+          <a href={siteUrl(`/report?type=community&id=${community.id}`)} className="text-slate-400 hover:text-rose-600 hover:underline">🚩 Community melden</a>
+        </p>
       </header>
 
       {!isMember || !events ? (

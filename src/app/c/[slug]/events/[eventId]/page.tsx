@@ -1,5 +1,5 @@
 import { requireActor } from "@/lib/auth/session";
-import { communityUrl } from "@/lib/domains";
+import { communityUrl, siteUrl } from "@/lib/domains";
 import { formatEventRange, formatShort } from "@/lib/dates";
 import { orNotFound } from "@/lib/errors";
 import { UUID_RE } from "@/lib/utils";
@@ -72,6 +72,7 @@ export default async function EventPage({
           )}
           {d.isRegistered && !d.started && <span className="chip bg-emerald-100 text-emerald-800">✓ Du bist angemeldet</span>}
           <a href={`${self}/event.ics`} className="btn-secondary">🗓️ In Kalender eintragen</a>
+          {!d.isOrganizer && <a href={siteUrl(`/report?type=event&id=${event.id}`)} className="text-xs text-slate-400 hover:text-rose-600 hover:underline">🚩 Melden</a>}
           {d.isOrganizer && (
             <form action={cancelEvent} className="ml-auto">
               {Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
@@ -119,6 +120,7 @@ export default async function EventPage({
                 }))}
                 deleteAction={deleteImage}
                 emptyText="Noch keine Fotos – lade die ersten hoch!"
+                reportBaseUrl={siteUrl("/report")}
               />
               <ImageUploadForm target="event" eventId={event.id} returnTo={self} />
             </>

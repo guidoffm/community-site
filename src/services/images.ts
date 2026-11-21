@@ -98,6 +98,11 @@ export async function readImage(viewer: Actor | null, id: string, variant: Image
   const img = await db().query.images.findFirst({ where: eq(t.images.id, id) });
   if (!img) throw notFound("Bild");
   let isPublic = false;
+  if (viewer?.isSiteAdmin) {
+    const data = await readImageFile(img.id, variant);
+    if (!data) throw notFound("Bild");
+    return { data, contentType: variant === "thumb" ? "image/webp" : img.mimeType, isPublic: false };
+  }
   if (img.homepageUserId) {
     const hp = await db().query.homepages.findFirst({ where: eq(t.homepages.userId, img.homepageUserId) });
     if (!hp || !(await canViewHomepage(hp, viewer?.userId ?? null))) throw notFound("Bild");
@@ -121,11 +126,16 @@ export async function deleteImage(actor: Actor, id: string) {
     allowed = ev?.organizerId === actor.userId;
   }
   if (!allowed) throw forbidden();
+  await removeImage(img.id);
+  return img;
+}
+
+/** Bild samt Speicherobjekten entfernen (ohne Rechteprüfung – Aufrufer prüft). */
+export async function removeImage(id: string) {
   const keys = await db().transaction(async (tx) => {
-    const keys = await scheduleImageDeletion(tx, [img.id]);
-    await tx.delete(t.images).where(eq(t.images.id, img.id));
+    const keys = await scheduleImageDeletion(tx, [id]);
+    await tx.delete(t.images).where(eq(t.images.id, id));
     return keys;
   });
   await deleteScheduled(keys);
-  return img;
 }

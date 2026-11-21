@@ -288,3 +288,85 @@ export async function notifyLoginCode(tx: Tx, user: Recipient, code: string) {
     tx,
   );
 }
+
+// ---------------------------------------------------------------- Meldeverfahren (DSA)
+const STATUS_TEXT: Record<string, string> = {
+  removed: "Wir haben den Inhalt entfernt.",
+  blocked: "Wir haben das verantwortliche Konto gesperrt.",
+  dismissed: "Wir haben keinen Verstoß festgestellt; der Inhalt bleibt bestehen.",
+};
+
+export const reportMails = {
+  /** Eingangsbestätigung (Art. 16 Abs. 4 DSA) */
+  received(to: Recipient, id: string, label: string, reason: string): OutgoingMail[] {
+    return [
+      {
+        to: { email: to.email, name: to.name },
+        subject: `Deine Meldung ist eingegangen (${label})`,
+        text: `Hallo ${to.name},\n\nvielen Dank für deine Meldung zu: ${label}\nGrund: ${reason}\nAktenzeichen: ${id}\n\nWir prüfen den Inhalt und informieren dich über unsere Entscheidung.\n`,
+        html: layout(
+          "Deine Meldung ist eingegangen",
+          `<p>Hallo ${escapeHtml(to.name)}, vielen Dank für deine Meldung.</p>
+           <table style="border-collapse:collapse">
+             <tr><td style="padding:4px 16px 4px 0;color:#64748b">Inhalt</td><td>${escapeHtml(label)}</td></tr>
+             <tr><td style="padding:4px 16px 4px 0;color:#64748b">Grund</td><td>${escapeHtml(reason)}</td></tr>
+             <tr><td style="padding:4px 16px 4px 0;color:#64748b">Aktenzeichen</td><td>${escapeHtml(id)}</td></tr>
+           </table>
+           <p>Wir prüfen den Inhalt und informieren dich über unsere Entscheidung.</p>`,
+          { label: `Zu ${APP_NAME}`, url: siteUrl("/") },
+        ),
+      },
+    ];
+  },
+  adminNotice(admins: Recipient[], id: string, label: string, reason: string, details: string): OutgoingMail[] {
+    const url = siteUrl("/admin/reports");
+    return admins.map((a) => ({
+      to: { email: a.email, name: a.name },
+      subject: `Neue Meldung: ${label}`,
+      text: `Neue Meldung (${id})\n\nInhalt: ${label}\nGrund: ${reason}\n\n${details}\n\nBearbeiten: ${url}\n`,
+      html: layout(
+        "🚩 Neue Meldung",
+        `<p><strong>${escapeHtml(label)}</strong></p><p>Grund: ${escapeHtml(reason)}</p>
+         <p style="background:#f1f5f9;padding:12px 16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(details)}</p>`,
+        { label: "Meldung bearbeiten", url },
+      ),
+    }));
+  },
+  /** Entscheidung an die meldende Person (Art. 16 Abs. 5 DSA) */
+  decision(to: Recipient, label: string, status: string, note: string): OutgoingMail[] {
+    return [
+      {
+        to: { email: to.email, name: to.name },
+        subject: `Entscheidung zu deiner Meldung (${label})`,
+        text: `Hallo ${to.name},\n\nwir haben deine Meldung zu „${label}“ geprüft. ${STATUS_TEXT[status]}\n\nBegründung: ${note}\n\nBei Fragen: mail@altiros.de\n`,
+        html: layout(
+          "Entscheidung zu deiner Meldung",
+          `<p>Hallo ${escapeHtml(to.name)}, wir haben deine Meldung zu <strong>${escapeHtml(label)}</strong> geprüft.</p>
+           <p><strong>${escapeHtml(STATUS_TEXT[status])}</strong></p>
+           <p style="background:#f1f5f9;padding:12px 16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(note)}</p>
+           <p style="color:#64748b;font-size:14px">Bei Fragen: <a href="mailto:mail@altiros.de">mail@altiros.de</a></p>`,
+          { label: `Zu ${APP_NAME}`, url: siteUrl("/") },
+        ),
+      },
+    ];
+  },
+  /** Begründung an die betroffene Person (Art. 17 DSA) */
+  statementOfReasons(to: Recipient, label: string, action: "remove" | "block", note: string): OutgoingMail[] {
+    const what = action === "remove" ? `Wir haben folgenden Inhalt von dir entfernt: ${label}` : `Wir haben dein Konto gesperrt (Anlass: ${label}).`;
+    return [
+      {
+        to: { email: to.email, name: to.name },
+        subject: action === "remove" ? `Ein Inhalt von dir wurde entfernt` : `Dein Konto bei ${APP_NAME} wurde gesperrt`,
+        text: `Hallo ${to.name},\n\n${what}\n\nBegründung: ${note}\n\nGrundlage sind unsere Nutzungsbedingungen (${siteUrl("/terms")}) bzw. geltendes Recht. Die Entscheidung wurde nach einer Meldung von einem Menschen getroffen, nicht automatisiert.\n\nWenn du die Entscheidung für falsch hältst, kannst du dich innerhalb von sechs Monaten unter mail@altiros.de beschweren; wir prüfen sie dann erneut.\n`,
+        html: layout(
+          action === "remove" ? "Ein Inhalt wurde entfernt" : "Dein Konto wurde gesperrt",
+          `<p>Hallo ${escapeHtml(to.name)},</p><p>${escapeHtml(what)}</p>
+           <p style="background:#f1f5f9;padding:12px 16px;border-radius:8px;white-space:pre-wrap"><strong>Begründung:</strong> ${escapeHtml(note)}</p>
+           <p>Grundlage sind unsere <a href="${siteUrl("/terms")}">Nutzungsbedingungen</a> bzw. geltendes Recht. Die Entscheidung wurde nach einer Meldung von einem Menschen getroffen, nicht automatisiert.</p>
+           <p>Wenn du die Entscheidung für falsch hältst, kannst du dich innerhalb von sechs Monaten unter <a href="mailto:mail@altiros.de">mail@altiros.de</a> beschweren; wir prüfen sie dann erneut.</p>`,
+          { label: "Nutzungsbedingungen", url: siteUrl("/terms") },
+        ),
+      },
+    ];
+  },
+};

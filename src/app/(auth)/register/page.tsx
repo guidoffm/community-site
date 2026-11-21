@@ -4,6 +4,7 @@ import { register } from "@/app/actions/auth";
 import { getActor } from "@/lib/auth/session";
 import { listCommunities } from "@/services/communities";
 import { PRIVACY_URL } from "@/lib/domains";
+import { MIN_AGE } from "@/lib/terms";
 
 export const metadata = { title: "Registrieren", alternates: { canonical: "/register" } };
 
@@ -53,6 +54,16 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           </fieldset>
         )}
         <p className="text-xs text-slate-500">Du bekommst eine E-Mail mit einem Bestätigungslink. Bestätigst du ihn nicht innerhalb von 24 Stunden, wird die Registrierung gelöscht.</p>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="acceptTerms" required className="mt-1 accent-[#7c3aed]" />
+          <span>
+            Ich stimme den <a href="/terms" target="_blank" rel="noreferrer" className="link">Nutzungsbedingungen</a> zu.
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="ageConfirmed" required className="mt-1 accent-[#7c3aed]" />
+          <span>Ich bin mindestens {MIN_AGE} Jahre alt.</span>
+        </label>
         <p className="text-xs text-slate-500">
           Welche Daten wir verarbeiten und welche Rechte du hast, steht in der{" "}
           <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="link">Datenschutzerklärung</a>.

@@ -4,7 +4,7 @@ import { clientIp } from "@/lib/auth/client-ip";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { safeRedirectTarget, siteUrl } from "@/lib/domains";
 import { run, type ActionState } from "@/lib/forms";
-import { authenticate, changePassword as changePasswordService, register as registerUser, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "@/services/users";
+import { acceptTerms as acceptTermsService, authenticate, changePassword as changePasswordService, register as registerUser, requestLoginCode, requestPasswordReset, resetPassword, verifyEmail, verifyLoginCode } from "@/services/users";
 import { deleteAccount as deleteAccountService } from "@/services/account";
 import { requireActor } from "@/lib/auth/session";
 
@@ -27,6 +27,8 @@ export async function register(_: ActionState, fd: FormData): Promise<ActionStat
         password: fd.get("password"),
         communityIds: fd.getAll("communityIds").map(String),
         next: fd.get("next") ? safeRedirectTarget(fd.get("next")) : null,
+        acceptTerms: fd.get("acceptTerms") === "on",
+        ageConfirmed: fd.get("ageConfirmed") === "on",
       },
       await clientIp(),
     );
@@ -99,5 +101,14 @@ export async function loginWithCode(_: ActionState, fd: FormData): Promise<Actio
     const user = await verifyLoginCode(String(fd.get("email") ?? ""), String(fd.get("code") ?? ""), await clientIp());
     await createSession(user.id);
     redirect(safeRedirectTarget(fd.get("next")));
+  });
+}
+
+export async function acceptTerms(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const actor = await requireActor({ allowPendingTerms: true });
+    if (fd.get("accept") !== "on") return { error: "Bitte bestätige die Nutzungsbedingungen." };
+    await acceptTermsService(actor.userId);
+    redirect(safeRedirectTarget(fd.get("next") || "/"));
   });
 }

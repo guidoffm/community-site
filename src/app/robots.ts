@@ -12,7 +12,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // nur für angemeldete Nutzer bzw. ohne Mehrwert für Suchmaschinen
-        disallow: ["/account", "/messages", "/homepage", "/password", "/verify", "/register/check-email", "/settings", "/events/new", "/api/"],
+        disallow: ["/account", "/messages", "/homepage", "/password", "/verify", "/register/check-email", "/terms/accept", "/report", "/admin", "/settings", "/events/new", "/api/"],
       },
     ],
     sitemap: siteUrl("/sitemap.xml"),

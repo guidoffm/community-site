@@ -3,11 +3,13 @@ import { unreadCount } from "@/services/messages";
 import { APP_NAME, siteUrl } from "@/lib/domains";
 import { logout } from "@/app/actions/auth";
 import { Avatar } from "./decor";
+import { openReportCount } from "@/services/reports";
 
 /** Navigation mit absoluten Links – wird auch auf den Community-Subdomains angezeigt. */
 export async function Nav() {
   const actor = await getActor();
   const unread = actor ? await unreadCount(actor) : 0;
+  const openReports = actor?.isSiteAdmin ? await openReportCount() : 0;
   const item = "rounded-full px-3 py-1.5 font-medium text-slate-600 transition hover:bg-brand-light hover:text-brand-dark";
   return (
     <header className="sticky top-0 z-40 border-b border-violet-100 bg-white/80 backdrop-blur-md">
@@ -22,6 +24,11 @@ export async function Nav() {
               {unread > 0 && <span className="chip ml-1 bg-pop text-white">{unread}</span>}
             </a>
             <a href={siteUrl("/homepage")} className={item}>Meine Homepage</a>
+            {actor.isSiteAdmin && (
+              <a href={siteUrl("/admin/reports")} className={item}>
+                Meldungen{openReports > 0 && <span className="chip ml-1 bg-rose-600 text-white">{openReports}</span>}
+              </a>
+            )}
           </>
         )}
         <div className="ml-auto flex items-center gap-2">

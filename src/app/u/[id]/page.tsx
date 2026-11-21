@@ -28,7 +28,11 @@ export default async function HomepageView({ params }: { params: Promise<{ id: s
           <h1 className="text-4xl"><span className="text-gradient">{hp.title}</span></h1>
           <p className="mt-1 text-sm text-slate-500">von {hp.ownerName}</p>
         </div>
-        {hp.isOwner && <a href="/homepage" className="btn-secondary">Bearbeiten</a>}
+        {hp.isOwner ? (
+          <a href="/homepage" className="btn-secondary">Bearbeiten</a>
+        ) : (
+          <a href={`/report?type=homepage&id=${hp.userId}`} className="text-xs text-slate-400 hover:text-rose-600 hover:underline">🚩 Melden</a>
+        )}
       </header>
       {hp.content && (
         <section className="card">
@@ -38,7 +42,7 @@ export default async function HomepageView({ params }: { params: Promise<{ id: s
       {hp.images.length > 0 && (
         <section className="space-y-3">
           <h2>Bilder</h2>
-          <ImageGallery images={hp.images.map((i) => ({ id: i.id, caption: i.caption, width: i.width, height: i.height, canDelete: false }))} emptyText="" />
+          <ImageGallery images={hp.images.map((i) => ({ id: i.id, caption: i.caption, width: i.width, height: i.height, canDelete: false }))} emptyText="" reportBaseUrl="/report" />
         </section>
       )}
     </article>

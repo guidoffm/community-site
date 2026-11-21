@@ -34,6 +34,9 @@ export default async function MessagePage({ params, searchParams }: { params: Pr
           </p>
         </header>
         <div className="whitespace-pre-wrap break-words">{msg.body}</div>
+        {msg.isRecipient && !msg.isSender && (
+          <p className="text-right text-xs"><a href={`/report?type=message&id=${msg.id}`} className="text-slate-400 hover:text-rose-600 hover:underline">🚩 Melden</a></p>
+        )}
         {msg.parent && (
           <blockquote className="border-l-4 border-slate-200 pl-4 text-sm text-slate-500">
             <p className="mb-1">

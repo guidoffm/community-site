@@ -6,14 +6,17 @@ import { redirect } from "next/navigation";
 import { db, t } from "@/db";
 import { env } from "@/lib/env";
 import { siteUrl } from "@/lib/domains";
+import { TERMS_VERSION } from "@/lib/terms";
 
 /** Wer handelt gerade */
 export interface Actor {
   userId: string;
   email: string;
   name: string;
-  /** darf Communities anlegen */
+  /** darf Communities anlegen, bearbeitet Meldungen */
   isSiteAdmin: boolean;
+  /** hat der aktuellen Fassung der Nutzungsbedingungen zugestimmt */
+  termsAccepted: boolean;
 }
 
 const COOKIE = "c15k_session";
@@ -49,9 +52,15 @@ export async function getActor(): Promise<Actor | null> {
     const { payload } = await jwtVerify(token, env.sessionSecret());
     if (!payload.sub) return null;
     const user = await db().query.users.findFirst({ where: eq(t.users.id, payload.sub) });
-    if (!user?.emailVerifiedAt) return null;
+    if (!user?.emailVerifiedAt || user.blockedAt) return null;
     if (user.passwordChangedAt && (payload.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
-    return { userId: user.id, email: user.email, name: user.name, isSiteAdmin: user.isSiteAdmin };
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      isSiteAdmin: user.isSiteAdmin,
+      termsAccepted: user.termsVersion === TERMS_VERSION,
+    };
   } catch {
     return null;
   }
@@ -64,9 +73,11 @@ async function currentUrl() {
 }
 
 /** Für Seiten/Server-Actions: angemeldeter Benutzer oder Redirect auf die Login-Seite (mit Rücksprung). */
-export async function requireActor(): Promise<Actor> {
+export async function requireActor(opts: { allowPendingTerms?: boolean } = {}): Promise<Actor> {
   const a = await getActor();
   if (!a) redirect(siteUrl(`/login?next=${encodeURIComponent(await currentUrl())}`));
+  // Erst den (aktuellen) Nutzungsbedingungen zustimmen
+  if (!a.termsAccepted && !opts.allowPendingTerms) redirect(siteUrl(`/terms/accept?next=${encodeURIComponent(await currentUrl())}`));
   return a;
 }
 

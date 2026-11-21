@@ -36,6 +36,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="flex gap-4">
               <a href={IMPRINT_URL} className="hover:text-brand hover:underline">Impressum</a>
               <a href={PRIVACY_URL} className="hover:text-brand hover:underline">Datenschutz</a>
+              <a href={siteUrl("/terms")} className="hover:text-brand hover:underline">Nutzungsbedingungen</a>
+              <a href={siteUrl("/report")} className="hover:text-brand hover:underline">Inhalt melden</a>
             </nav>
           </div>
         </footer>
